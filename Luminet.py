@@ -85,7 +85,7 @@ def b(P):
 
 def phi_inf(P):
     Qvar = Q(P)
-    ksq = Qvar - P + 6*M/(2*Q)
+    ksq = (Qvar - P + 6*M)/(2*Q)
     zinf = zeta_inf(P)
     phi = 2*(mpmath.sqrt(P/Qvar))*(mpmath.ellipk(ksq) - mpmath.ellipf(zinf, ksq))
     return phi
