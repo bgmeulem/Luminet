@@ -99,16 +99,10 @@ def K(m):
     return mpmath.ellipf(np.pi / 2, m)
 
 
-def filterP(P: np.ndarray, M: float, tol: float = 10e-4) -> Tuple[np.ndarray, np.ndarray]:
+def filterP(P: np.ndarray, M: float, tol: float = 10e-4) -> []:
     """removes instances where P == 2*M
     returns indices where this was the case"""
-    to_return = P
-    to_remove = np.where([np.abs(p - 2 * M) < tol for p in P])[0]
-    if len(to_remove) > 1:
-        del to_return[to_remove[0]:to_remove[-1]]
-    elif len(to_remove) == 1:
-        to_return = np.delete(to_return, to_remove[0])
-    return list(to_return), to_remove
+    return [e for e in P if abs(e - 2 * M) > tol]
 
 
 def eq13(P: float, r: float, a: float, M: float, incl: float, n: int = 0) -> float:
@@ -132,11 +126,12 @@ def eq13(P: float, r: float, a: float, M: float, incl: float, n: int = 0) -> flo
     # as argument to specify "elliptic sine" and modulus m=k**2
     sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
     term1 = -(Qvar - P + 2 * M) / (4 * M * P)
-    term2 = ((Qvar - P + 6 * M) / (4 * M * P)) * (sn ** 2).real
+    term2 = float(((Qvar - P + 6 * M) / (4 * M * P)) * (sn ** 2).real)  # cast to float for speed
     return -1 + r * (term1 + term2)  # should yield zero
 
 
-def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: float = 1.) -> None:
+def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: float = 1.,
+                    angular_precision=100) -> None:
     fig = plt.figure()
     ax = fig.add_subplot(111)
     # ax.get_xaxis().set_visible(False)
@@ -146,52 +141,52 @@ def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: fl
     ax.set_xlabel('P')
     ax.set_ylabel('eq13(P, r, a)')
 
-    root_precision = solver_params['root_precision']
-    for n in tqdm(range(root_precision)):
-        a = np.pi * n / root_precision
+    for n in tqdm(range(angular_precision)):
+        a = np.pi * n / angular_precision
 
-        def eq13_P(P, M_=M):
-            return eq13(P, radius, a, M_, incl=incl)  # solve this equation for P
+        def eq13_P(P, radius_=radius, a_=a, M_=M, incl_=incl):
+            return eq13(P, radius_, a_, M_, incl_)  # solve this equation for P
 
-        s = findP(radius, incl, a, M, **solver_params)
-        x = np.linspace(0.2, 1.01 * radius, root_precision)
-        x, _ = filterP(x, M)
-        y = [float(eq13_P(x_)) for x_ in x]
+        s = calcP(radius, incl, a, M, **solver_params)
+        x = np.linspace(0.2, 1.01 * radius, 100)
+        x = filterP(x, M)
+        y = [eq13_P(x_) for x_ in x]
 
         ax.clear()
         ax.set_xlabel('P')
         ax.set_ylabel('eq13(P, r, a)')
-        for solution in list(s):
-            ax.scatter(solution, 0, color='red', zorder=10)
+        if s is not None:
+            for solution in list(s):
+                ax.scatter(solution, 0, color='red', zorder=10)
         ax.plot(x, y)
         plt.axhline(0, color='black')
         plt.title("Equation 13, r = {}\na = {}".format(radius, round(a, 5)))
         fig.savefig('movie/frame{:03d}.png'.format(n))
 
 
-def findP(r, incl, alpha, M, midpoint_iterations=100, plot_inbetween=False,
+def calcP(r, incl, alpha, M, midpoint_iterations=100, plot_inbetween=False,
           n=0, minP=2, initial_guesses=20):
     """Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value"""
 
     def eq13_P(P_, r_, alpha_, M_, incl_, n_):
-        return eq13(P_, r_, alpha_, M_, incl_, n_)  # solve this equation for P
+        s = eq13(P_, r_, alpha_, M_, incl_, n_)  # solve this equation for P
+        return s
 
     def MidpointMethodP(x, y, ind, radius, angle, M_, inclination, n_):
-        # for each P point, look around the point within expansion radius and find crossing more accurately
-        # for each P point, look around the point within expansion radius and find crossing more accurately
         new_x = x
         new_y = y
 
-        x_ = [x[ind], x[ind + 1]]  # interval of P values
+        x_ = [new_x[ind], new_x[ind + 1]]  # interval of P values
         inbetween_P = np.mean(x_)
         new_x.insert(ind + 1, inbetween_P)  # insert middle P value to calculate
 
-        y_ = [y[ind], y[ind + 1]]  # results of eq13 given the P values
+        y_ = [new_y[ind], new_y[ind + 1]]  # results of eq13 given the P values
         # calculate the P value inbetween
         inbetween_solution = eq13_P(P_=inbetween_P, r_=radius, alpha_=angle, M_=M_, incl_=inclination, n_=n_)
         new_y.insert(ind + 1, inbetween_solution)
         y_.insert(1, inbetween_solution)
-        new_ind = ind + np.where(np.diff(np.sign(y_)))[0][0]
+        ind_of_signchange = np.where(np.diff(np.sign(y_)))[0]
+        new_ind = ind + ind_of_signchange[0]
 
         return new_x, new_y, new_ind  # return x and y refined in relevant regions, as well as new index of sign change
 
@@ -201,13 +196,14 @@ def findP(r, incl, alpha, M, midpoint_iterations=100, plot_inbetween=False,
         Searches again for a solution with a precision root_precision"""
         updated_P = P_
         indices_of_signchange_ = indices_of_signchange
+        new_x = x
+        new_y = y
         for i in range(len(indices_of_signchange_)):  # update each solution of P
-            new_x = x
-            new_y = y
-            new_ind = indices_of_signchange[i]
+            new_ind = indices_of_signchange_[i]  # location in X and Y where eq13(P=X[ind]) equals Y=0
             for iteration in range(iterations):
                 new_x, new_y, new_ind = MidpointMethodP(new_x, new_y, new_ind, radius, angle, M_, inclination, n_)
             updated_P[i] = new_x[new_ind]
+            indices_of_signchange_ = [e + iterations for e in indices_of_signchange_]
         return updated_P
 
     def getPlot(X, Y, solutions, radius=r):
@@ -221,14 +217,14 @@ def findP(r, incl, alpha, M, midpoint_iterations=100, plot_inbetween=False,
             plt.scatter(P_, 0, color='red')
         return plt
 
-    x, _ = filterP(np.linspace(minP, 1.01 * r, initial_guesses), M)  # range of P values without P == 2*M
-    y = [eq13_P(float(x_), r, alpha, M, incl, n) for x_ in x]  # values of eq13
-    ind = np.where(np.diff(np.sign(y)))[0]
-    P = [x[i] for i in ind]  # initial guesses
+    x_ = list(np.linspace(minP, .8 * r, initial_guesses))  # range of P values without P == 2*M
+    y_ = [eq13_P(P_value, r, alpha, M, incl, n) for P_value in x_]  # values of eq13
+    ind = np.where(np.diff(np.sign(y_)))[0]
+    P = [x_[i] for i in ind]  # initial guesses
     if any(P):
-        P = improveP(P, x, y, ind, midpoint_iterations, r, alpha, M, incl, n)  # get better P values
+        P = improveP(P, x_, y_, ind, midpoint_iterations, r, alpha, M, incl, n)  # get better P values
         if plot_inbetween:
-            getPlot(x, y, P).show()
+            getPlot(x_, y_, P).show()
         return P
     else:
         # TODO: implement newtonian ellipse
@@ -279,12 +275,14 @@ def flux_intrinsic(r, acc, M):
 
 def redshift_factor(radius, angle, incl, M, b_):
     """Calculate the redshift factor (1 + z), ignoring cosmological redshift."""
-    return (1. + np.sqrt((M / radius ** 3)) * b_ * np.sin(incl) * np.sin(angle)) / np.sqrt((1. - 3. * M / radius))
+    # TODO: the paper makes no sense here
+    return (1. + np.sqrt(M / (radius ** 3)) * b_ * np.sin(incl) * np.sin(angle)) / \
+            np.sqrt((1. - 3. * M / radius))
 
 
 def find_a(b_, z, incl, M, r_):
-    """Given a certain redshift z (NOT 1+z) and radius b on the observer plaque, find the angle
-    on the observer plaque. Include contributions from the disk at radii r."""
+    """Given a certain redshift value z (NOT redshift factor 1+z) and radius b on the observer plane, find the angle
+    on the observer plane. Include contributions from the disk at radii r."""
     radius = np.linspace(3 * M, 100 * M, len(b_)) if not r_ else r_
 
     sin_angle = ((1. + z) * np.sqrt(1. - 3. * M / radius) - 1) / ((M / radius ** 3) ** .5 * b_ * np.sin(incl))
