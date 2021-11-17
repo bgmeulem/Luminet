@@ -1,5 +1,8 @@
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
+<p align="center">
+<img src="https://github.com/bgmeulem/Luminet/movie/BH.gif">
+</p>
 
 # Latest updates:
 Rewrite of entire branch. Apologies for the lack of incremental updates, it seems my upstream branch has not been set up properly. This is fixed now.
@@ -10,4 +13,5 @@ Vastly improved speed and stability. Impact parameters are calculated using the 
 Added functionality to calculate redshifts and isoredshift lines
 
 # TODO / Bugs
-It seems the calculation of redshifts is not correct yet. It finds values that are too extreme compared to the paper. Unsure about why this is.
+- Find out why redshift values are that large
+- switch red and blue color
