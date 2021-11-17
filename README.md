@@ -1,7 +1,7 @@
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
 <p align="middle">
-<img src="https://github.com/bgmeulem/Luminet/blob/master/movie/BH.gif?raw=true" width="400" height="400"/>
+<img src="https://github.com/bgmeulem/Luminet/blob/master/movie/BH.gif?raw=true" max_width="400" max_height="400"/>
 </p>
 
 # Usage
