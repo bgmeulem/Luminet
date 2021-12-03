@@ -5,7 +5,7 @@ This repo provides material for recreating the famous paper by Jean-Pierre Lumin
 </p>
 
 # Usage
-```
+```python
 M = 1.
 bh = BlackHole(inclination=80, mass=M)
 
