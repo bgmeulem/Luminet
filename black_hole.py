@@ -1,7 +1,6 @@
-import matplotlib.colors as clrs
 import matplotlib.cm as cm
 import matplotlib.collections as mcoll
-import matplotlib.pyplot as plt
+import matplotlib.image as img
 import numpy as np
 
 from black_hole_math import *
@@ -24,8 +23,10 @@ class BlackHole:
                               'midpoint_iterations': 6,
                               'plot_inbetween': False,
                               'minP': 3.1 * self.M}
-        self.plot_params = {'save_plot': True,
+        self.plot_params = {'save_plot': False,
                             'plot_ellipse': False,
+                            'redshift': True,
+                            'linestyle': '-',
                             'key': "",
                             'face_color': 'black',
                             'line_color': 'white',
@@ -33,6 +34,7 @@ class BlackHole:
                             'alpha': 1.,
                             'show_grid': False,
                             'legend': False,
+                            'orig_background': False,
                             'title': "Isoradials for M = {}".format(self.M)}
         self.isoradials = {}
         self.isoredshifts = {}
@@ -41,7 +43,8 @@ class BlackHole:
         self.t = incl * np.pi / 180
 
     def calcIsoRedshifts(self, minR, maxR, r_precision=100, midpoint_steps=10,
-                         redshifts=[-.15, -.1, -.05, 0., .05, .1, .15, .20, .25, .5]):
+                         redshifts=[-.15, -.1, -.05, 0., .05, .1, .15, .20, .25, .5],
+                         cartesian=False):
         def calcIsoRedshift(redshift, dirty_isoradials, midpoint_steps):
             """Calculates the isoredshift for a single redshift value"""
             solutions = []
@@ -49,9 +52,9 @@ class BlackHole:
             for ir in dirty_isoradials:
                 t.set_description("Calculating isoredshift {} at R={:.2f}".format(redshift, ir.radius))
                 t.update()
-                angles_, radii_ = ir.calcRedshiftLocation(redshift, midpoint_steps)
-                for s in range(len(angles_)):
-                    solutions.append([angles_[s], radii_[s]])
+                x_or_a, y_or_radius = ir.calcRedshiftLocation(redshift, midpoint_steps, cartesian=cartesian)
+                for s in range(len(x_or_a)):
+                    solutions.append([x_or_a[s], y_or_radius[s]])
                 # else:
                 #     print("No solution found at z={}, R={}".format(redshift, ir.radius))
             return solutions
@@ -80,7 +83,7 @@ class BlackHole:
         self.isoredshifts = isoredshifts
         return isoredshifts
 
-    def plotIsoradials(self, direct_r: [], ghost_r: [], y_lim=None):
+    def plotIsoradials(self, direct_r: [], ghost_r: [], y_lim=None, show=False):
         """Given an array of radii for the direct image and/or ghost image, plots the corresponding
         isoradials.
         Calculates the isoradials according to self.root_params
@@ -95,8 +98,7 @@ class BlackHole:
             return ax_
 
         fig = plt.figure(figsize=(10, 10))
-        ax_ = fig.add_subplot(111, projection='polar')
-        ax_.set_theta_zero_location("S")
+        ax_ = fig.add_subplot(111)
         fig.patch.set_facecolor(self.plot_params['face_color'])
         ax_.set_facecolor(self.plot_params['face_color'])
         if self.plot_params['show_grid']:
@@ -105,43 +107,52 @@ class BlackHole:
                             labelsize=15)
         else:
             ax_.grid()
-            ax_.spines['polar'].set_visible(False)
+            # ax_.spines['polar'].set_visible(False)
 
         color_range = (-1, 1)
 
+        # plot background
+        if self.plot_params['orig_background']:
+            image = img.imread('bh_background.png')
+            scale = (940 / 30 * 2. * M)  # 940 px by 940 px, and 2M ~ 30px
+            ax_.imshow(image, extent=(-scale/2, scale/2, -scale/2, scale/2))
+        else:
+            ax_.set_facecolor('black')
+
         # plot ghost images
-        self.plot_params['line_color'] = 'grey'  # default value in case of no redshift
         self.plot_params['alpha'] = .5
         for radius in tqdm(sorted(ghost_r), desc='Ghost Image', position=1, leave=False):
             self.plot_params['key'] = 'R = {}'.format(radius)
             isoradial = Isoradial(radius, self.t, self.M, order=1)
             isoradial.solver_params = self.solver_params
+            isoradial.plot_params = self.plot_params
             isoradial.calculate()
-            ax_ = isoradial.plot(ax_, self.plot_params, colornorm=color_range)
+            plt_, ax_ = isoradial.plot(ax_, self.plot_params, colornorm=color_range)
 
         # plot direct images
-        self.plot_params['line_color'] = 'white'  # default value in case of no redshift
         self.plot_params['alpha'] = 1.
         for i, radius in enumerate(tqdm(sorted(direct_r), desc='Direct Image', position=1, leave=False)):
             self.plot_params['key'] = 'R = {}'.format(radius)
             isoradial = Isoradial(radius, self.t, self.M, order=0)
             isoradial.solver_params = self.solver_params
+            isoradial.plot_params = self.plot_params
             isoradial.calculate()
-            ax_ = isoradial.plot(ax_, self.plot_params, colornorm=color_range)
+            plt_, ax_ = isoradial.plot(ax_, self.plot_params, colornorm=color_range)
 
         if self.plot_params['plot_ellipse']:  # plot ellipse
             for radius in direct_r:
-                ax_ = plotEllipse(radius, ax_)
+                plt_, ax_ = plotEllipse(radius, ax_)
 
-        ax_.autoscale_view(scalex=False)
         ylim = y_lim if y_lim != () else [0, ax_.get_ylim()]
-        ax_.set_ylim(ylim)  # assure the radial axis of a polar plot makes sense and starts at 0
+        # ax_.set_ylim(ylim)  # assure the radial axis of a polar plot makes sense and starts at 0
         plt.title(self.plot_params['title'], color=self.plot_params['text_color'])
-        plt.show()
+        if show:
+            plt.show()
         if self.plot_params['save_plot']:
             name = self.plot_params['title'].replace(' ', '_')
             name = name.replace('°', '')
             fig.savefig(name, dpi=300, facecolor=self.plot_params['face_color'])
+        return fig, ax_
 
     def writeFrames(self, direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
                     y_lim=(0, 130)):
@@ -153,13 +164,14 @@ class BlackHole:
             bh.plotIsoradials(direct_r, ghost_r, y_lim=y_lim)
 
     def plotIsoRedshifts(self, minR, maxR, r_precision, midpoint_steps=5,
-                         redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.]):
+                         redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.], ax_=None):
         isoredshifts = bh.calcIsoRedshifts(minR, maxR, r_precision=r_precision, midpoint_steps=midpoint_steps,
-                                           redshifts=redshifts)
-        print(isoredshifts)
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='polar')
-        ax.set_theta_zero_location("S")
+                                           redshifts=redshifts, cartesian=True)
+        if ax_:
+            ax = ax_
+        else:
+            fig = plt.figure(figsize=(6, 6))
+            ax = fig.add_subplot()
         # ax.set_ylim([0, 100])
 
         i = 0
@@ -174,23 +186,23 @@ class BlackHole:
                     co1.append(co)
                 else:
                     co2.append(co)
+            label = z
             if len(co1):
-                ax.plot(np.array(co1)[:, 0], np.array(co1)[:, 1], color=color, label=z)
+                ax.scatter(np.array(co1)[:, 0], np.array(co1)[:, 1], color=color, label=label)
+                label = None
             if len(co2):
-                ax.plot(np.array(co2)[:, 0], np.array(co2)[:, 1], color=color)
+                ax.scatter(np.array(co2)[:, 0], np.array(co2)[:, 1], color=color, label=label)
         # Shrink current axis by 20%
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+        mx = 1.1*max([max(max(isoredshifts[z])) for z in isoredshifts.keys() if len(isoredshifts[z])])
+        ax.set_xlim((-mx, mx))
+        ax.set_ylim((-mx, mx))
 
-        # Put a legend to the right of the current axis
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.legend(loc='center left')
         plt.suptitle("Isoredshift lines for M={}".format(self.M))
         plt.show()
 
 
 class Isoradial:
-    # TODO: fix. Black hole *has* isoradials -> no inheritance, but attribute
-    # TODO: now, isoradials initializes a black hole with default parameters (incline of 10)
     def __init__(self, R, incl, mass, order=0):
         self.M = mass  # mass of the black hole containing this isoradial
         self.t = incl  # inclination of observer's plane
@@ -206,16 +218,21 @@ class Isoradial:
                               'minP': 3.1 * self.M}
         self.plot_params = {'save_plot': True,
                             'plot_ellipse': False,
+                            'redshift': False,
+                            'linestyle': '-',
                             'key': "",
                             'face_color': 'black',
                             'line_color': 'white',
                             'text_color': 'white',
                             'alpha': 1.,
                             'show_grid': False,
+                            'orig_background': False,
                             'legend': False,
                             'title': "Isoradials for R = {}".format(R)}
         self.radii_b = []
         self.angles = []
+        self.X = []
+        self.Y = []
         self.periastrons = []
         self.redshift_factors = []
 
@@ -256,6 +273,8 @@ class Isoradial:
             angles = [a_ + np.pi for a_ in angles]
         self.angles = angles
         self.radii_b = impact_parameters
+        self.X, self.Y = np.asarray([R * np.cos(th - np.pi / 2) for R, th in zip(self.radii_b, self.angles)]), \
+                         np.asarray([R * np.sin(th - np.pi / 2) for R, th in zip(self.radii_b, self.angles)])
         self.periastrons = periastrons
         return angles, impact_parameters
 
@@ -283,16 +302,17 @@ class Isoradial:
         indices = np.where(diff)[0]  # locations where sign switches from -1 to 0 or from 0 to 1
         return self.radii_b[indices[0]] if len(indices) else None
 
-    def calc_bP(self, alpha):
-        P_ = calcP(r=self.radius, incl=self.t, alpha=alpha, M=self.M, n=self.order, **self.solver_params)
+    def calc_bP(self, _alpha):
+        P_ = calcP(_r=self.radius, incl=self.t, _alpha=_alpha, M=self.M, n=self.order, **self.solver_params)
         if P_:
-            P_ = P_[-1] if len(P_) else None  # pick biggest one
-            b_ = float(b(P_, self.M))
+            # TODO: support for multiple P?
+            P_ = P_[0] if len(P_) else None  # pick first one
+            b_ = float(calc_b_from_P(P_, self.M))
             return b_, P_
         else:
             return None, None
 
-    def plot(self, ax_=None, plot_params=None, show=False, colornorm=(0, 1)):
+    def plot(self, _ax=None, plot_params=None, show=False, colornorm=(0, 1)):
         def make_segments(x, y):
             """
             Create list of line segments from x and y coordinates, in the correct format
@@ -305,7 +325,7 @@ class Isoradial:
             return segments
 
         def colorline(
-                _ax, x, y, z=None, cmap=plt.get_cmap('copper'), norm=plt.Normalize(*colornorm),
+                __ax, __x, __y, z=None, cmap=plt.get_cmap('RdBu_r'), norm=plt.Normalize(*colornorm),
                 linewidth=3):
             """
             http://nbviewer.ipython.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
@@ -317,7 +337,7 @@ class Isoradial:
 
             # Default colors equally spaced on [0,1]:
             if z is None:
-                z = np.linspace(0.0, 1.0, len(x))
+                z = np.linspace(0.0, 1.0, len(__x))
 
             # Special case if a single number:
             if not hasattr(z, "__iter__"):  # to check for numerical input -- this is a hack
@@ -325,38 +345,43 @@ class Isoradial:
 
             z = np.asarray(z)
 
-            segments = make_segments(x, y)
+            segments = make_segments(__x, __y)
             lc = mcoll.LineCollection(segments, cmap=cmap, norm=norm,
                                       linewidth=linewidth, alpha=self.plot_params['alpha'])
             lc.set_array(z)
-            _ax.add_collection(lc)
-            mx = max(segments[:][:, 1].flatten())
-            _ax.set_ylim((0, mx))
-            return _ax
+            __ax.add_collection(lc)
+            # mx = max(segments[:][:, 1].flatten())
+            # _ax.set_ylim((0, mx))
+            return __ax
 
-        if not ax_:
-            fig = plt.figure()
-            ax = fig.add_subplot(projection='polar')
+        if not _ax:
+            ir_fig = plt.figure(figsize=(5, 5))
+            ir_ax = ir_fig.add_subplot()
         else:
-            ax = ax_
+            ir_ax = _ax
 
         if not plot_params:
             plot_params = self.plot_params
 
         # Plot isoradial
-        if len(self.redshift_factors):
-            ax = colorline(ax, self.angles, self.radii_b, z=[e - 1 for e in self.redshift_factors],
-                           cmap=cm.get_cmap('RdBu'))
+        if self.plot_params['redshift']:
+            ir_ax = colorline(ir_ax, self.X, self.Y, z=[e - 1 for e in self.redshift_factors],
+                              cmap=cm.get_cmap('RdBu_r'))  # red-blue colormap reversed to match redshift
         else:
-            ax.plot(self.angles, self.radii_b, color=plot_params['line_color'],
-                    alpha=plot_params['alpha'])
+            ir_ax.plot(self.X, self.Y, color=plot_params['line_color'],
+                       alpha=plot_params['alpha'], linestyle=self.plot_params['linestyle'])
         if self.plot_params['legend']:
             plt.legend(prop={'size': 16})
+        if len(self.X) and len(self.Y):
+            mx = np.max([np.max(self.X), np.max(self.Y)])
+            mx *= 1.1
+            ir_ax.set_xlim([-mx, mx])
+            ir_ax.set_ylim([-mx, mx])
         if show:
-            ax.autoscale_view(scalex=False)
-            ax.set_ylim([0, ax.get_ylim()[1] * 1.1])
+            # ax.autoscale_view(scalex=False)
+            # ax.set_ylim([0, ax.get_ylim()[1] * 1.1])
             plt.show()
-        return ax
+        return plt, ir_ax
 
     def calcBetween(self, ind):
         """
@@ -376,10 +401,10 @@ class Isoradial:
         z_ = redshift_factor(self.radius, mid_angle, self.t, self.M, b_)
         self.radii_b.insert(ind + 1, b_)
         self.angles.insert(ind + 1, mid_angle)
-        self.impact_parameters.insert(ind + 1, P_)
+        self.periastrons.insert(ind + 1, P_)
         self.redshift_factors.insert(ind + 1, z_)
 
-    def calcRedshiftLocation(self, redshift, midpoint_steps=10):
+    def calcRedshiftLocation(self, redshift, midpoint_steps=10, cartesian=False):
         """Calculates which location on the isoradial has some redhsift value (not redhisft factor!)"""
         diff = [redshift + 1 - z_ for z_ in self.redshift_factors]
         initial_guess_indices = np.where(np.diff(np.sign(diff)))[0]
@@ -398,25 +423,38 @@ class Isoradial:
             b_solutions.append(.5 * (self.radii_b[new_ind] + self.radii_b[new_ind + 1]))
             # update the initial guess indices, as the indexing has changed due to inserted solutions
             initial_guess_indices = [e + midpoint_steps for e in initial_guess_indices]
+        if cartesian:
+            x, y = [R * np.cos(th - np.pi / 2) for R, th in zip(b_solutions, angle_solutions)], \
+                   [R * np.sin(th - np.pi / 2) for R, th in zip(b_solutions, angle_solutions)]
+            return x, y
         return angle_solutions, b_solutions
 
     def plotRedshift(self):
         fig = plt.figure()
-        plt.plot(ir.angles, [z - 1 for z in self.redshift_factors])
+        ax = fig.add_subplot()
+        ax.plot(self.angles, [z - 1 for z in self.redshift_factors])
         plt.title("Redshift values for isoradial\nR={} | M = {}".format(20, M))
-        plt.xlim([0, 2 * np.pi])
+        ax.set_xlim([0, 2 * np.pi])
         plt.show()
 
 
 if __name__ == '__main__':
     M = 1.
-    bh = BlackHole(inclination=80, mass=M)
+    bh = BlackHole(inclination=60, mass=M)
     # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
     #                y_lim=(0, 130))
-    bh.plotIsoradials([30], [30], y_lim=(0, 130))
-    ir = Isoradial(R=30 * M, incl=80 * np.pi / 180, mass=M, order=0)
-    ir.calculate()
-    ir.plotRedshift()
+    bh.plot_params['orig_background'] = True
+    bh.plot_params['show_grid'] = False
+    bh.solver_params = {'initial_guesses': 10,
+                        'midpoint_iterations': 7,
+                        'plot_inbetween': False,
+                        'minP': 3.1 * bh.M}
+    bh.angular_properties['start_angle'] = np.pi/2
+    fig, ax = bh.plotIsoradials([6, 10, 20, 30], [], show=False)
+    x, y = [2 * np.cos(th) for th in np.linspace(0, 2 * np.pi, 100)], \
+           [2 * np.sin(th) for th in np.linspace(0, 2 * np.pi, 100)]
+    ax.plot(x, y, color='red')
+    plt.show()
 
-    bh.plotIsoRedshifts(minR=5, maxR=80, r_precision=20, midpoint_steps=5,
-                        redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.])
+    bh.plotIsoRedshifts(minR=3.1*M, maxR=40*M, r_precision=20, midpoint_steps=5,
+                        redshifts=[-.1, 0., 0.05, 0.1, .15, .25])
