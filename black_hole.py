@@ -83,7 +83,7 @@ class BlackHole:
         self.isoredshifts = isoredshifts
         return isoredshifts
 
-    def plotIsoradials(self, direct_r: [], ghost_r: [], y_lim=None, show=False):
+    def plotIsoradials(self, direct_r: [], ghost_r: [], ax_lim=None, show=False):
         """Given an array of radii for the direct image and/or ghost image, plots the corresponding
         isoradials.
         Calculates the isoradials according to self.root_params
@@ -99,6 +99,7 @@ class BlackHole:
 
         fig = plt.figure(figsize=(10, 10))
         ax_ = fig.add_subplot(111)
+        plt.axis('off')  # command for hiding the axis.
         fig.patch.set_facecolor(self.plot_params['face_color'])
         ax_.set_facecolor(self.plot_params['face_color'])
         if self.plot_params['show_grid']:
@@ -143,8 +144,9 @@ class BlackHole:
             for radius in direct_r:
                 plt_, ax_ = plotEllipse(radius, ax_)
 
-        ylim = y_lim if y_lim != () else [0, ax_.get_ylim()]
-        # ax_.set_ylim(ylim)  # assure the radial axis of a polar plot makes sense and starts at 0
+        if ax_lim:
+            ax_.set_ylim(ax_lim)
+            ax_.set_xlim(ax_lim)
         plt.title(self.plot_params['title'], color=self.plot_params['text_color'])
         if show:
             plt.show()
@@ -155,13 +157,16 @@ class BlackHole:
         return fig, ax_
 
     def writeFrames(self, direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
-                    y_lim=(0, 130)):
-        # For an isoradial of R = 30*M, the maximum impact parameter is about 123.7
+                    ax_lim=(-35, 35)):
         steps = np.linspace(start, end, 1 + (end - start) // stepsize)
         for a in tqdm(steps, position=0, desc='Writing frames'):
             self.setInclination(a)
             bh.plot_params['title'] = 'inclination = {:03}°'.format(int(a))
-            bh.plotIsoradials(direct_r, ghost_r, y_lim=y_lim)
+            fig_, ax_ = bh.plotIsoradials(direct_r, ghost_r, ax_lim=ax_lim)
+            name = self.plot_params['title'].replace(' ', '_')
+            name = name.replace('°', '')
+            fig_.savefig('movie/'+name, dpi=300, facecolor=self.plot_params['face_color'])
+            plt.close()  # to not destroy your RAM
 
     def plotIsoRedshifts(self, minR, maxR, r_precision, midpoint_steps=5,
                          redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.], ax_=None):
@@ -441,10 +446,7 @@ class Isoradial:
 if __name__ == '__main__':
     M = 1.
     bh = BlackHole(inclination=60, mass=M)
-    # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
-    #                y_lim=(0, 130))
-    bh.plot_params['orig_background'] = True
-    bh.plot_params['show_grid'] = False
+    bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=90, end=180, stepsize=5, ax_lim=(-35, 35))
     bh.solver_params = {'initial_guesses': 10,
                         'midpoint_iterations': 7,
                         'plot_inbetween': False,

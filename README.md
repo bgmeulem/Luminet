@@ -1,20 +1,21 @@
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
 <p align="middle">
-<img src="https://github.com/bgmeulem/Luminet/blob/master/movie/BH.gif?raw=true" max_width="400" max_height="400"/>
+<img src=movie/BH_with_redshift.gif max_width="400" max_height="400"/>
 </p>
 
 # Usage
+
 ```python
 M = 1.
 bh = BlackHole(inclination=80, mass=M)
 
 # write frames for a gif of rotating isoradial lines
 bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
-               y_lim=(0, 130))
-               
+               ax_lim=(0, 130))
+
 # plot isoradial lines
-bh.plotIsoradials([30], [30], y_lim=(0, 130))
+bh.plotIsoradials([30], [30], ax_lim=(0, 130))
 
 # Calculate single isoradial
 ir = Isoradial(R=30 * M, incl=80 * np.pi / 180, mass=M, order=0)

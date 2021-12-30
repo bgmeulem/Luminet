@@ -32,6 +32,7 @@ def k(P: float, M: float) -> float:
     if Qvar < 10e-3:  # numerical stability
         return mpmath.sqrt(.5)
     else:
+        # WARNING: Paper has an error here. There should be brackets around the numerator.
         return mpmath.sqrt((Qvar - P + 6 * M) / (2 * Qvar))  # the modulus of the ellipitic integral
 
 
@@ -43,7 +44,7 @@ def k2(_P: float, M: float, tol: float = 1e-6):
         return .5
     # TODO: add inf / inf
     else:
-        # WARNING: yet another typo. There should be brackets around the numerator.
+        # WARNING: Paper has an error here. There should be brackets around the numerator.
         return (Qvar - _P + 6 * M) / (2 * Qvar)  # the modulus of the ellipitic integral
 
 
@@ -69,7 +70,6 @@ def zeta_r(_P: float, r: float, M: float) -> float:
 def cos_gamma(_a: float, incl: float, tol=10e-5) -> float:
     """Calculate the cos of the angle gamma"""
     if abs(incl) < tol:
-        print("tolerance exceeded for cos_gamma(_a={}, incl={}, tol={})".format(_a, incl, tol))
         return 0
     else:
         return mpmath.cos(_a) / mpmath.sqrt(mpmath.cos(_a) ** 2 + mpmath.cot(incl) ** 2)  # real
@@ -116,9 +116,9 @@ def eq13(_P: float, _r: float, _a: float, M: float, incl: float, n: int = 0) -> 
     ellinf = F(zinf, m_)  # Elliptic integral F(zinf, k)
     g = mpmath.acos(cos_gamma(_a, incl))  # real
 
-    # Calculate the argument of sn (mod is m, same as the original elliptic integral)
-    # TODO: WARNING: quite sure the paper has a typo here: sqrt(P / Q) should be in denominator, not numerator
-    # There's no way gamma and sqrt(P/Q) end up on the same side of the division
+    # Calculate the argument of sn (mod is m = k², same as the original elliptic integral)
+    # WARNING: paper has an error here: \sqrt(P / Q) should be in denominator, not numerator
+    # There's no way that \gamma and \sqrt(P/Q) can end up on the same side of the division
     if n:  # higher order image
         ellK = K(m_)  # calculate complete elliptic integral of mod m = k²
         ellips_arg = (g - 2. * n * np.pi) / (2. * mpmath.sqrt(_P / Qvar)) - ellinf + 2. * ellK
@@ -169,7 +169,7 @@ def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: fl
         ax.plot(x, y)
         plt.axhline(0, color='black')
         plt.title("Equation 13, r = {}\na = {}".format(radius, round(a, 5)))
-        fig.savefig('movie/frame{:03d}.png'.format(n))
+        fig.savefig('movie/eq13/frame{:03d}.png'.format(n))
 
 
 def calcP(_r, incl, _alpha, M, midpoint_iterations=100, plot_inbetween=False,
