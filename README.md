@@ -7,20 +7,21 @@ This repo provides material for recreating the famous paper by Jean-Pierre Lumin
 # Usage
 
 ```python
+from black_hole import *
 M = 1.
 bh = BlackHole(inclination=80, mass=M)
-
-# write frames for a gif of rotating isoradial lines
-bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
-               ax_lim=(0, 130))
-
-# plot isoradial lines
-bh.plotIsoradials([30], [30], ax_lim=(0, 130))
 
 # Calculate single isoradial
 ir = Isoradial(R=30 * M, incl=80 * np.pi / 180, mass=M, order=0)
 ir.calculate()
 ir.plotRedshift()  # plot its redshifts along the line
+
+# plot isoradial lines
+bh.plotIsoradials([6, 10, 20, 30], [6, 10, 20, 30])
+
+# write frames for a gif of rotating isoradial lines
+bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
+               ax_lim=(-35, 35))
 
 # plot lines of equal redshift values
 bh.plotIsoRedshifts(minR=5, maxR=80, r_precision=20, midpoint_steps=5,
@@ -35,15 +36,16 @@ BlackHole() for easy access to calculations.
 Vastly improved speed and stability. Impact parameters are calculated using the midpoint method: stable and quick.
 Added functionality to calculate redshifts and isoredshift lines
 
-# TODO / Bugs
-1. Redshifts:
-  - Find out why redshift values are that large
-  - switch red and blue color
+(30/12/2021)
+- Identified errors in the paper. This explains the large redshift values. Fixed these errors and annotated them in the code.
+- Added functionality to plot over the original figure to check for these errors (only the figure of isoradial lines at incl=60°)
 
-2. Flux
+# TODO
+
+1. Flux
   - Calculate flux based on redshift
   - Calculate isofluxlines
 
-3. Image
+2. Image
   - Randomly sample points in (R, a) space. Calculate observer coordinates (b, a), redshift and flux. Write to file.
   - Plot file with locagions, redshifts and fluxes
