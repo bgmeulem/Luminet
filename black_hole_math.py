@@ -17,7 +17,7 @@ def Q(P_: float, M: float) -> float:
 
 def calc_b_from_P(P_: float, M: float, tol: float = 1e-5) -> float:
     """Get impact parameter b from Periastron distance P"""
-    if P_ < tol:  # could physically never happen
+    if abs(P_) < tol:  # could physically never happen
         print("tolerance exceeded for calc_b_from_P(P_={}, M={}, tol={}".format(P_, M, tol))
         return mpmath.sqrt(3 * P_ ** 2)
     # WARNING: the paper most definitely has a typo here. The fracture on the right hand side equals b², not b.
@@ -39,21 +39,14 @@ def k(P: float, M: float) -> float:
 def k2(_P: float, M: float, tol: float = 1e-6):
     """Calculate the squared modulus of elliptic integral"""
     Qvar = Q(_P, M)
-    if Qvar.real < tol:  # numerical stability
-        print("tolerance exceeded in function k2(_P = {}, M={}, tol={})".format(_P, M, tol))
-        return .5
     # TODO: add inf / inf
-    else:
-        # WARNING: Paper has an error here. There should be brackets around the numerator.
-        return (Qvar - _P + 6 * M) / (2 * Qvar)  # the modulus of the ellipitic integral
+    # WARNING: Paper has an error here. There should be brackets around the numerator.
+    return (Qvar - _P + 6 * M) / (2 * Qvar)  # the modulus of the ellipitic integral
 
 
 def zeta_inf(_P: float, M: float, tol: float = 1e-6) -> float:
     """Calculate Zeta_inf for elliptic integral F(Zeta_inf, k)"""
     Qvar = Q(_P, M)  # Q variable, only call to function once
-    if (1 / Qvar).real < tol:
-        print("tolerance exceeded in function zeta_inf(_P={}, M={}, tol={}".format(_P, M, tol))
-        return 1.
     arg = (Qvar - _P + 2 * M) / (Qvar - _P + 6 * M)
     z_inf = mpmath.asin(mpmath.sqrt(arg))
     return z_inf
@@ -101,13 +94,13 @@ def K(m):
     return mpmath.ellipf(np.pi / 2, m)
 
 
-def filterP(P: np.ndarray, M: float, tol: float = 10e-4) -> []:
+def filterP(P: np.ndarray, M: float, tol: float = 10e-3) -> []:
     """removes instances where P == 2*M
     returns indices where this was the case"""
-    return [e for e in P if abs(e - 2 * M) > tol]
+    return [e for e in P if abs(e - 2. * M) > tol]
 
 
-def eq13(_P: float, _r: float, _a: float, M: float, incl: float, n: int = 0) -> float:
+def eq13(_P: float, _r: float, _a: float, M: float, incl: float, n: int = 0, tol=10e-6) -> float:
     """Relation between radius (where photon was emitted in accretion disk), a and P.
     P can be converted to b, yielding the polar coordinates (b, a) on the photographic plate"""
     zinf = zeta_inf(_P, M)
@@ -129,13 +122,12 @@ def eq13(_P: float, _r: float, _a: float, M: float, incl: float, n: int = 0) -> 
     # as argument to specify "elliptic sine" and modulus m=k²
     sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
     sn2 = sn * sn
-    sn2 = sn2.real  # generally a negligible complex part
     # sn2 = float(sn2.real)
     term1 = -(Qvar - _P + 2. * M) / (4. * M * _P)
     term2 = ((Qvar - _P + 6. * M) / (4. * M * _P)) * sn2
-    # TODO: log is easier to solve maybe? -> nope: intersection is more clear, but no change in precision
-    # TODO: and takes about twice as long to calculate
-    return float(1. - _r * (float(term1) + float(term2.real)))  # solve this for zero
+
+    s = 1. - _r * (term1 + term2)  # solve this for zero
+    return s
 
 
 def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: float = 1.,
@@ -155,25 +147,26 @@ def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: fl
         def eq13_P(P, radius_=radius, a_=a, M_=M, incl_=incl):
             return eq13(P, radius_, a_, M_, incl_)  # solve this equation for P
 
-        s = calcP(radius, incl, a, M, **solver_params)
-        x = np.linspace(0.2, 1.01 * radius, 100)
-        x = filterP(x, M)
-        y = [eq13_P(x_) for x_ in x]
+        s = calcImpactParameter(radius, incl, a, M, **solver_params, use_ellipse=False)
+        x = np.linspace(solver_params["minP"], 1.01 * radius, 100)
+        x_range = filterP(x, M)
+        y = [eq13_P(x_).real for x_ in x_range]
+        x = [calc_b_from_P(p, M) for p in filterP(x, M)]
 
         ax.clear()
         ax.set_xlabel('P')
         ax.set_ylabel('eq13(P, r, a)')
         if s is not None:
-            for solution in list(s):
-                ax.scatter(solution, 0, color='red', zorder=10)
+            ax.scatter(s.real, 0, color='red', zorder=10)
         ax.plot(x, y)
         plt.axhline(0, color='black')
         plt.title("Equation 13, r = {}\na = {}".format(radius, round(a, 5)))
         fig.savefig('movie/eq13/frame{:03d}.png'.format(n))
 
 
-def calcP(_r, incl, _alpha, M, midpoint_iterations=100, plot_inbetween=False,
-          n=0, minP=2, initial_guesses=20):
+def calcImpactParameter(_r, incl, _alpha, _M, midpoint_iterations=100, plot_inbetween=False,
+                        n=0, minP=1, initial_guesses=20, elliptic_integral_interval=None, use_ellipse=True,
+                        tol_critical_b=0.1):
     """Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value"""
 
     def eq13_P(__P, __r, __alpha, __M, __incl, __n):
@@ -194,7 +187,7 @@ def calcP(_r, incl, _alpha, M, midpoint_iterations=100, plot_inbetween=False,
                                     __n=__n)
         new_y.insert(__ind + 1, inbetween_solution)
         y_.insert(1, inbetween_solution)
-        ind_of_sign_change_ = np.where(np.diff(np.sign(y_)))[0]
+        ind_of_sign_change_ = np.where(np.diff(np.sign(y_)))[0]  # TODO: how to deal with complex
         new_ind = __ind + ind_of_sign_change_[0]
 
         return new_x, new_y, new_ind  # return x and y refined in relevant regions, as well as new index of sign change
@@ -226,31 +219,61 @@ def calcP(_r, incl, _alpha, M, midpoint_iterations=100, plot_inbetween=False,
             plt.scatter(P_, 0, color='red')
         return plt
 
+    if elliptic_integral_interval is None:
+        elliptic_integral_interval = (70 * np.pi / 180,
+                                      2 * np.pi - 70 * np.pi / 180)
+
     # TODO: an x_range until 1.1*R seems to suffice for isoradials < 30M, but this is guesstimated
-    x_ = list(np.linspace(minP, 1.1 * _r, initial_guesses))  # range of P values without P == 2*M
-    y_ = [eq13_P(P_value, _r, _alpha, M, incl, n) for P_value in x_]  # values of eq13
+    x_ = list(np.linspace(minP, 2. * _r, initial_guesses))  # range of P values without P == 2*M
+    x_ = filterP(x_, _M)
+    y_ = [eq13_P(P_value, _r, _alpha, _M, incl, n) for P_value in x_]  # values of eq13
+    y_ = [y.real if y.imag < 10e-6 else y for y in y_]  # drop tiny imaginary parts
+    if any([y.imag >= 10e-6 for y in y_]):
+        y1 = [float(y.real) for y in y_]
+        y2 = [y.imag for y in y_]  # for testing
+        y3 = [y.real + y.imag for y in y_]  # for testing
+        # fig = plt.figure()
+        # plt.plot(x_, y1)
+        # plt.plot(x_, y2)
+        # plt.show()
+        y_ = y1
     ind = np.where(np.diff(np.sign(y_)))[0]
-    _P = [x_[i] for i in ind]  # initial guesses
-    if any(_P):
-        _P = improveP(_P, x_, y_, ind, midpoint_iterations, _r, _alpha, M, incl, n)  # get better P values
+    _P = [x_[i] for i in ind]  # initial guesses for P
+    if any([abs(p.real - 3*_M) < tol_critical_b for p in _P]):  # near critical limit
+        return 5.19695*_M + 3.4823*_M*np.exp(-mu(_P[-1].real, _M))
+    # If image is ghost image, or direct image with lots of curvature: calculate with elliptic integrals
+    if len(_P) and \
+            (elliptic_integral_interval[0] < _alpha < elliptic_integral_interval[1] or n or not use_ellipse):
+        # Assume if no P is found, it's because it's in the region without periastron
+        # TODO: check if this assumption is correct, throw error
+        # Side or backside of disk: calculate impact parameter according to elliptic integrals
+        _P = improveP([P.real for P in _P], x_, y_, ind, midpoint_iterations, _r, _alpha, _M, incl, n)  # get better P values
+
         if plot_inbetween:
             getPlot(x_, y_, _P).show()
-        return _P
+        # TODO: how to correctly assume there is only one solution
+        _P = max(_P)
+        return float(calc_b_from_P(_P, _M).real)
+    elif use_ellipse:  # Front side of disk: calculate impact parameter with the ellipse formula
+        return float(ellipse(_r, _alpha, incl))
     else:
-        # TODO: implement newtonian ellipse
-        return None
+        # why was no P found?
+        # fig = plt.figure()
+        # plt.plot(x_, y_)
+        # plt.show()
+        return None  # TODO: implement
 
 
 def phi_inf(P, M):
     Qvar = Q(P, M)
     ksq = (Qvar - P + 6. * M) / (2. * Qvar)
     zinf = zeta_inf(P, M)
-    phi = 2. * (np.sqrt(P / Qvar)) * (np.ellipk(ksq) - np.ellipf(zinf, ksq))
+    phi = 2. * (mpmath.sqrt(P / Qvar)) * (mpmath.ellipk(ksq) - mpmath.ellipf(zinf, ksq))
     return phi
 
 
 def mu(P, M):
-    return 2 * phi_inf(P, M) - np.pi
+    return float(2 * phi_inf(P, M) - np.pi)
 
 
 def ellipse(r, a, incl):
@@ -269,6 +292,11 @@ def flux_intrinsic(r, acc, M):
     f = (3. * M * acc / (8 * np.pi)) * (1 / ((r_ - 3) * r ** 2.5)) * \
         (np.sqrt(r_) - np.sqrt(6) + 3 ** -.5 * np.log10(log_arg))
     return f
+
+
+def flux_observed(r, acc, M, redshift_factor):
+    flux_intr = flux_intrinsic(r, acc, M)
+    return flux_intr / redshift_factor**4
 
 
 def redshift_factor(radius, angle, incl, M, b_):
@@ -290,10 +318,78 @@ def find_a(b_, z, incl, M, r_):
     return np.arcsin(sin_angle)
 
 
+def getPFromB(b, M):
+    num1 = 3**(2/3)*b**2
+    num2 = 3**(1/3) * (mpmath.sqrt(81*b**4 * M**2 - 3*b**6) - 9 * b**2 * M)
+    denom3 = mpmath.sqrt(81*b**4 * M**2 - 3*b**6) - 9*b**2 * M
+    denom = 3*denom3**(1/3)
+    s = (num1 + num2) / denom
+    return s
+
+
+def find_br(z, alpha, M, incl, n=0):
+    """Does not work, function is too complicated to solve"""
+    def b(__r, __z, __M, __incl, __alpha):
+        """Find impact parameter b for a given z, M, inclination and alpha in function of r."""
+        s = ((1 + __z) * mpmath.sqrt(1 - 3 * __M / __r)) * (__r * mpmath.sqrt(__r / __M) /
+                                                            (mpmath.sin(__incl) * mpmath.sin(__alpha)))
+        return s
+
+    def P(r, __z, __M, __incl, __alpha):
+        return getPFromB(b(r, __z, __M, __incl, __alpha), __M)
+
+    def to_solve(r, __z, __M, __incl, __alpha, __n):
+        _P = P(r, __z, __M, __incl, __alpha)
+        zinf = zeta_inf(_P, __M)
+        Qvar = Q(_P, __M)
+        m_ = k2(_P, __M)  # modulus of the elliptic integrals. mpmath takes m = k² as argument.
+        ellinf = F(zinf, m_)  # Elliptic integral F(zinf, k)
+        g = mpmath.acos(cos_gamma(__alpha, __incl))  # real
+
+        # Calculate the argument of sn (mod is m = k², same as the original elliptic integral)
+        # WARNING: paper has an error here: \sqrt(P / Q) should be in denominator, not numerator
+        # There's no way that \gamma and \sqrt(P/Q) can end up on the same side of the division
+        if __n:  # higher order image
+            ellK = K(m_)  # calculate complete elliptic integral of mod m = k²
+            ellips_arg = (g - 2. * __n * np.pi) / (2. * mpmath.sqrt(_P / Qvar)) - ellinf + 2. * ellK
+        else:  # direct image
+            ellips_arg = g / (2. * mpmath.sqrt(_P / Qvar)) + ellinf  # complex
+
+        # sn is an Jacobi elliptic function: elliptic sine. ellipfun() takes 'sn'
+        # as argument to specify "elliptic sine" and modulus m=k²
+        sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
+        sn2 = sn * sn
+        # sn2 = float(sn2.real)
+        term1 = -(Qvar - _P + 2. * __M) / (4. * __M * _P)
+        term2 = ((Qvar - _P + 6. * __M) / (4. * __M * _P)) * sn2
+        return -1 + r*(term1 + term2)
+
+    X = np.linspace(3.01*M, 4*M, 1000)
+    Y = [to_solve(x, z, M, incl, alpha, n) for x in X]
+
+    Y_imag = [y.imag for y in Y]
+    Y = [y.real for y in Y]
+    dy = [(e.real-b.real) for b, e in zip(Y[:-1], Y[1:])]
+    dx = 1/1000
+    too_steep = [i for i in range(len(Y) - 1) if dy[i]/dx > 10]
+
+    # zero_imag = np.where(np.diff(np.sign([y.imag for y in Y])))[0]
+    # zero = [e for e in zero_real if e in zero_imag]
+    plt.plot(X, Y_imag, alpha=.2)
+    plt.plot(X, Y)
+    plt.xlabel('radius')
+    plt.ylabel('Yield 0 to find radius')
+    plt.tight_layout()
+    plt.ylim(-25, 25)
+    plt.show()
+    print("Radius = {}".format(X[zero_real]))
+
+
 if __name__ == '__main__':
     M = 1
     solver_params = {'initial_guesses': 10,
-                     'midpoint_iterations': 7,
+                     'midpoint_iterations': 10,
                      'plot_inbetween': False,
                      'minP': 3.1 * M}
-    writeFramesEq13(30, solver_params=solver_params)
+    # writeFramesEq13(5, solver_params=solver_params)
+    find_br(-.05, alpha=np.pi/2, M=1, incl=70*np.pi/180)
