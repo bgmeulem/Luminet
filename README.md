@@ -8,6 +8,7 @@ This repo provides material for recreating the famous paper by Jean-Pierre Lumin
 
 ```python
 from black_hole import *
+
 M = 1.
 bh = BlackHole(inclination=80, mass=M)
 
@@ -20,7 +21,7 @@ ir.plotRedshift()  # plot its redshifts along the line
 bh.plotIsoradials([6, 10, 20, 30], [6, 10, 20, 30])
 
 # write frames for a gif of rotating isoradial lines
-bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, stepsize=5,
+bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5,
                ax_lim=(-35, 35))
 
 # plot lines of equal redshift values
