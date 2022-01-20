@@ -91,7 +91,8 @@ class BlackHole:
         for a in np.linspace(0, 2 * np.pi, 2 * self.angular_properties["angular_precision"]):
             b = 3 * np.sqrt(3) * self.M if np.pi / 2 < a < 3 * np.pi / 2 else \
                 min(ellipse(3 * np.sqrt(3) * self.M, a, self.t), 3 * np.sqrt(3) * self.M)
-            x_, y_ = polarToCartesian([b], [a], rotation=-np.pi/2)
+            rot = -np.pi / 2 if self.t < np.pi/2 else np.pi/2
+            x_, y_ = polarToCartesian([b], [a], rotation=rot)
             x.append(x_)
             y.append(y_)
         self.solver_params["minP"] = 3.1 * self.M
@@ -711,7 +712,7 @@ class Isoredshift:
     def improveTipOnce(self):
         """
         # TODO: this works! finds one more isoradial that previously did not have solution.
-        # TODO: The other IR simply have no redshift -> fix with improveBetweenSOlutionsOnce()
+        # TODO: The other IR simply have no redshift -> fix with improveBetweenSOlutionsOnce() and calculating isoradials inbetween
 
         :param angular_precision_dirty_ir: the angular precision at which to calculate the dirty isoradials
         :return: 0 if success
@@ -790,7 +791,7 @@ if __name__ == '__main__':
     bh.angular_properties['angular_precision'] = 100
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
     # bh.samplePoints(N=200, minR=20, maxR=40)  # maxR of 40 suffices for direct image, but needs up until 60 to hide ghost image because of lazy programming to properly deal with this
-    bh.plotPoints()
+    bh.plotPoints(powerscale=1)
     # fig, ax = bh.plotIsoRedshifts(redshifts=[-.2])
     # bh.angular_properties['start_angle'] = np.pi/2
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [], show=False)
