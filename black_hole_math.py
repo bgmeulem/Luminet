@@ -222,10 +222,6 @@ def calcImpactParameter(_r, incl, _alpha, _M, midpoint_iterations=100, plot_inbe
         elliptic_integral_interval = (70 * np.pi / 180,
                                       2 * np.pi - 70 * np.pi / 180)
 
-    if not (elliptic_integral_interval[0] < _alpha < elliptic_integral_interval[1]):
-        # skip elliptic integrals
-        return float(ellipse(_r, _alpha, incl))
-
     # TODO: an x_range until 1.1*R seems to suffice for isoradials < 30M, but this is guesstimated
     x_ = list(np.linspace(minP, 2. * _r, initial_guesses))  # range of P values without P == 2*M
     x_ = filterP(x_, _M)
@@ -236,12 +232,11 @@ def calcImpactParameter(_r, incl, _alpha, _M, midpoint_iterations=100, plot_inbe
     _P = [x_[i] for i in ind]  # initial guesses for P
 
     # If image is ghost image, or direct image with lots of curvature: calculate with elliptic integrals
-    if len(_P) and \
-            (elliptic_integral_interval[0] < _alpha < elliptic_integral_interval[1] or n or not use_ellipse):
+    if len(_P):
         _P = improveP([P.real for P in _P], x_, y_, ind, midpoint_iterations, _r, _alpha, _M, incl, n)  # get better P values
         if plot_inbetween:
             getPlot(x_, y_, _P).show()
-        # TODO: how to correctly assume there is only one solution
+        # TODO: how to correctly pick the right solution (there are generally 3 solutions, of which 2 complex)
         _P = max(_P)
         return float(calc_b_from_P(_P, _M).real)
     elif use_ellipse:  # Front side of disk: calculate impact parameter with the ellipse formula
@@ -310,70 +305,13 @@ def find_a(b_, z, incl, M, r_):
 
 
 def getPFromB(b, M):
+    # TODO: please don't ever use this
     num1 = 3**(2/3)*b**2
     num2 = 3**(1/3) * (mpmath.sqrt(81*b**4 * M**2 - 3*b**6) - 9 * b**2 * M)
     denom3 = mpmath.sqrt(81*b**4 * M**2 - 3*b**6) - 9*b**2 * M
     denom = 3*denom3**(1/3)
     s = (num1 + num2) / denom
     return s
-
-
-def find_br(z, alpha, M, incl, n=0):
-    """Does not work, function is too complicated to solve"""
-    def b(__r, __z, __M, __incl, __alpha):
-        """Find impact parameter b for a given z, M, inclination and alpha in function of r."""
-        s = ((1 + __z) * mpmath.sqrt(1 - 3 * __M / __r)) * (__r * mpmath.sqrt(__r / __M) /
-                                                            (mpmath.sin(__incl) * mpmath.sin(__alpha)))
-        return s
-
-    def P(r, __z, __M, __incl, __alpha):
-        return getPFromB(b(r, __z, __M, __incl, __alpha), __M)
-
-    def to_solve(r, __z, __M, __incl, __alpha, __n):
-        _P = P(r, __z, __M, __incl, __alpha)
-        zinf = zeta_inf(_P, __M)
-        Qvar = Q(_P, __M)
-        m_ = k2(_P, __M)  # modulus of the elliptic integrals. mpmath takes m = k² as argument.
-        ellinf = F(zinf, m_)  # Elliptic integral F(zinf, k)
-        g = mpmath.acos(cos_gamma(__alpha, __incl))  # real
-
-        # Calculate the argument of sn (mod is m = k², same as the original elliptic integral)
-        # WARNING: paper has an error here: \sqrt(P / Q) should be in denominator, not numerator
-        # There's no way that \gamma and \sqrt(P/Q) can end up on the same side of the division
-        if __n:  # higher order image
-            ellK = K(m_)  # calculate complete elliptic integral of mod m = k²
-            ellips_arg = (g - 2. * __n * np.pi) / (2. * mpmath.sqrt(_P / Qvar)) - ellinf + 2. * ellK
-        else:  # direct image
-            ellips_arg = g / (2. * mpmath.sqrt(_P / Qvar)) + ellinf  # complex
-
-        # sn is an Jacobi elliptic function: elliptic sine. ellipfun() takes 'sn'
-        # as argument to specify "elliptic sine" and modulus m=k²
-        sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
-        sn2 = sn * sn
-        # sn2 = float(sn2.real)
-        term1 = -(Qvar - _P + 2. * __M) / (4. * __M * _P)
-        term2 = ((Qvar - _P + 6. * __M) / (4. * __M * _P)) * sn2
-        return -1 + r*(term1 + term2)
-
-    X = np.linspace(3.01*M, 4*M, 1000)
-    Y = [to_solve(x, z, M, incl, alpha, n) for x in X]
-
-    Y_imag = [y.imag for y in Y]
-    Y = [y.real for y in Y]
-    dy = [(e.real-b.real) for b, e in zip(Y[:-1], Y[1:])]
-    dx = 1/1000
-    too_steep = [i for i in range(len(Y) - 1) if dy[i]/dx > 10]
-
-    # zero_imag = np.where(np.diff(np.sign([y.imag for y in Y])))[0]
-    # zero = [e for e in zero_real if e in zero_imag]
-    plt.plot(X, Y_imag, alpha=.2)
-    plt.plot(X, Y)
-    plt.xlabel('radius')
-    plt.ylabel('Yield 0 to find radius')
-    plt.tight_layout()
-    plt.ylim(-25, 25)
-    plt.show()
-    print("Radius = {}".format(X[zero_real]))
 
 
 if __name__ == '__main__':
@@ -383,4 +321,3 @@ if __name__ == '__main__':
                      'plot_inbetween': False,
                      'minP': 3.1 * M}
     # writeFramesEq13(5, solver_params=solver_params)
-    find_br(-.05, alpha=np.pi/2, M=1, incl=70*np.pi/180)

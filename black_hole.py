@@ -91,7 +91,7 @@ class BlackHole:
         for a in np.linspace(0, 2 * np.pi, 2 * self.angular_properties["angular_precision"]):
             b = 3 * np.sqrt(3) * self.M if np.pi / 2 < a < 3 * np.pi / 2 else \
                 min(ellipse(3 * np.sqrt(3) * self.M, a, self.t), 3 * np.sqrt(3) * self.M)
-            x_, y_ = polarToCartesian([b], [a])
+            x_, y_ = polarToCartesian([b], [a], rotation=-np.pi/2)
             x.append(x_)
             y.append(y_)
         self.solver_params["minP"] = 3.1 * self.M
@@ -407,7 +407,7 @@ class Isoradial:
             angles = [a_ + np.pi for a_ in angles]
         self.angles = angles
         self.radii_b = impact_parameters
-        self.X, self.Y = polarToCartesian(self.radii_b, self.angles)
+        self.X, self.Y = polarToCartesian(self.radii_b, self.angles, rotation=-np.pi/2)
         return angles, impact_parameters
 
     def calcRedshiftFactors(self):
@@ -779,7 +779,7 @@ def getAngleAround(p1, p2):
 if __name__ == '__main__':
     M = 1.
     bh = BlackHole(inclination=80, mass=M)
-    # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=90, end=180, stepsize=5, ax_lim=(-35, 35))
+    bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
     bh.solver_params = {'initial_guesses': 12,
                         'midpoint_iterations': 11,  # 5 is fine for direct image. Up until 10 for ghost image of large R
                         'plot_inbetween': False,
@@ -789,7 +789,7 @@ if __name__ == '__main__':
     bh.plot_params['plot_core'] = False
     bh.angular_properties['angular_precision'] = 100
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
-    bh.samplePoints(N=200, minR=20, maxR=40)  # maxR of 40 suffices for direct image, but needs up until 60 to hide ghost image because of lazy programming to properly deal with this
+    # bh.samplePoints(N=200, minR=20, maxR=40)  # maxR of 40 suffices for direct image, but needs up until 60 to hide ghost image because of lazy programming to properly deal with this
     bh.plotPoints()
     # fig, ax = bh.plotIsoRedshifts(redshifts=[-.2])
     # bh.angular_properties['start_angle'] = np.pi/2
