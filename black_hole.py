@@ -12,7 +12,7 @@ colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # six fivethirtyeigh
 
 
 class BlackHole:
-    def __init__(self, mass=1, inclination=10, acc=10e-8):
+    def __init__(self, mass=1, inclination=80, acc=10e-8):
         """Initialise black hole with mass and accretion rate
         Set viewer inclination above equatorial plane
         """
@@ -89,8 +89,8 @@ class BlackHole:
         y = []
         self.solver_params["minP"] = -1
         for a in np.linspace(0, 2 * np.pi, 2 * self.angular_properties["angular_precision"]):
-            b = 3 * np.sqrt(3) * M if np.pi / 2 < a < 3 * np.pi / 2 else \
-                min(ellipse(3 * np.sqrt(3) * M, a, self.t), 3 * np.sqrt(3) * M)
+            b = 3 * np.sqrt(3) * self.M if np.pi / 2 < a < 3 * np.pi / 2 else \
+                min(ellipse(3 * np.sqrt(3) * self.M, a, self.t), 3 * np.sqrt(3) * self.M)
             x_, y_ = polarToCartesian([b], [a])
             x.append(x_)
             y.append(y_)
@@ -270,38 +270,65 @@ class BlackHole:
         plt.suptitle("Isoredshift lines for M={}".format(self.M))
         plt.show()
 
-    def samplePoints(self, minR=None, maxR=None, N=1000, f='points.csv'):
-        if os.path.exists('./{}'.format(f)):
-            df = pd.read_csv(f, index_col=0)
-        else:
-            df = pd.DataFrame(columns=['X', 'Y', 'z_factor', 'flux_o'])
-        minR_ = minR if minR else self.M * 2.
+    def samplePoints(self, minR=None, maxR=None, N=1000, f='points.csv', f2='points_secondary.csv'):
+        # TODO save time here by calculating when secondary image will be visible given some inclination
+        df = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f)) else \
+            pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'z_factor', 'flux_o'])
+        df2 = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f2)) else \
+            pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'z_factor', 'flux_o'])
+
+        minR_ = minR if minR else self.M * 3.01
         maxR_ = maxR if maxR else self.M * 60
         t = tqdm(range(N))
         for _ in t:
             t.update(1)
-            r = minR_ + maxR_ * np.sqrt(np.random.random())
+            r = minR_ + maxR_ * np.sqrt(np.random.random())  # uniformly sampling a circle's surface
             theta = np.random.random() * 2 * np.pi
-            x = r * np.cos(theta)
-            y = r * np.sin(theta)
-            P_ = calcImpactParameter(r, self.t, theta, self.M, **self.solver_params)
-            if P_ is not None:  # TODO: fix bottom half with ellipses
-                P_ = P_[0]
-                b_ = calc_b_from_P(P_, self.M)
+            b_ = calcImpactParameter(r, incl=self.t, _alpha=theta, _M=self.M, **self.solver_params)
+            b_2 = calcImpactParameter(r, incl=self.t, _alpha=theta, _M=self.M, **self.solver_params, n=1)
+            if b_ is not None:
+                x = b_ * np.cos(theta)
+                y = b_ * np.sin(theta)
                 redshift_factor_ = redshift_factor(r, theta, self.t, self.M, b_)
                 F_o = flux_observed(r, self.acc, self.M, redshift_factor_)
-                df = df.append(pd.DataFrame({'X': x, 'Y': y, 'z_factor': redshift_factor_, 'flux_o': F_o}, index=[0]))
+                df = df.append(pd.DataFrame({'X': x, 'Y': y, 'impact_parameter': b_, 'z_factor': redshift_factor_, 'flux_o': F_o}, index=[0]))
+            if b_2 is not None:
+                theta += np.pi  # TODO: fix dirty manual flip for ghost image
+                x = b_2 * np.cos(theta)
+                y = b_2 * np.sin(theta)
+                redshift_factor_2 = redshift_factor(r, theta, self.t, self.M, b_2)
+                F_o2 = flux_observed(r, self.acc, self.M, redshift_factor_2)
+                df2 = df2.append(pd.DataFrame({'X': x, 'Y': y, 'impact_parameter': b_2, 'z_factor': redshift_factor_2, 'flux_o': F_o2}, index=[0]))
         df.to_csv(f)
+        df2.to_csv(f2)
 
-    def plotPoints(self, f='points.csv'):
+    def plotPoints(self, f='points.csv', f2='points_secondary.csv', powerscale=.7):
+        """
+        Plot the points written out by samplePoints()
+        :param f: filename of points (direct image)
+        :param f2: filename of points (secondary image)
+        :param powerscale: powerscale to apply to flux. No powerscale = 1. Anything lower than 1 will make the
+        dim points pop out more.
+        :return:
+        """
+        # _fig, _ax = self.plotIsoradials([6, 20], [6, 20])  # for testing
         _fig, _ax = self.__getFigure()
-        points = pd.read_csv(f)
-        points = points[(points['flux_o'] > 0)]
-        max_flux = max(points['flux_o'])
-        min_flux = min(points['flux_o'])
-        f = [(abs(f + min_flux) / (max_flux + min_flux)) for f in points['flux_o']]
-        _l = plt.scatter(points['X'], points['Y'], alpha=f, color='white')
-        _l.set_sizes([5] * len(points))
+        points1 = pd.read_csv(f)
+        points2 = pd.read_csv(f2)
+        points2 = points2[points2['X'] < 0]  # dirty hack to fix overlapping images where there shouldn't be
+        # TODO: how to properly show ghost ring?
+        max_flux = max(max(points1['flux_o']), max(points2['flux_o']))
+        min_flux = 0
+        for i, points in enumerate([points1, points2]):
+            points = points[(points['flux_o'] > 0)]
+            fluxes = [(abs(fl + min_flux) / (max_flux + min_flux))**powerscale for fl in points['flux_o']]
+            color = [cm.ScalarMappable(cmap="Greys_r", norm=plt.Normalize(0, 1)).to_rgba(flux) for flux in fluxes]
+            _l = plt.scatter(points['X'], points['Y'], alpha=1, color=color, zorder=i)
+            _l.set_sizes([7] * len(points))
+        _ax.set_xlim((-40, 40))
+        _ax.set_ylim((-40, 40))
+
+        plt.savefig('SampledPoints_incl={}.png'.format(self.t), dpi=300)
         plt.show()
 
 
@@ -367,7 +394,7 @@ class Isoradial:
             if b_:
                 angles.append(alpha_)
                 impact_parameters.append(b_)
-        if self.order > 0:
+        if self.order > 0:  # TODO: fix dirty manual flip for ghost images
             angles = [a_ + np.pi for a_ in angles]
 
         if self.angular_properties['mirror']:  # by default True. Halves computation time for calculating full isoradial
@@ -757,13 +784,14 @@ if __name__ == '__main__':
                         'midpoint_iterations': 11,  # 5 is fine for direct image. Up until 10 for ghost image of large R
                         'plot_inbetween': False,
                         'minP': 3.01,
-                        'elliptic_integral_interval': (0, 2 * np.pi),
-                        'use_ellipse': False}
+                        'elliptic_integral_interval': (0, 2 * np.pi),  # which section should be calculated with an elliptic integral
+                        'use_ellipse': True}
+    bh.plot_params['plot_core'] = False
     bh.angular_properties['angular_precision'] = 100
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
-    # bh.samplePoints(N=1000, minR=30)
-    # bh.plotPoints()
-    fig, ax = bh.plotIsoRedshifts(redshifts=[-.2])
+    bh.samplePoints(N=200, minR=20, maxR=40)  # maxR of 40 suffices for direct image, but needs up until 60 to hide ghost image because of lazy programming to properly deal with this
+    bh.plotPoints()
+    # fig, ax = bh.plotIsoRedshifts(redshifts=[-.2])
     # bh.angular_properties['start_angle'] = np.pi/2
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [], show=False)
     # x, y = [2 * np.cos(th) for th in np.linspace(0, 2 * np.pi, 100)], \

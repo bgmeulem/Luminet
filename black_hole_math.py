@@ -165,8 +165,7 @@ def writeFramesEq13(radius: float, solver_params: Dict, incl: float = 10., M: fl
 
 
 def calcImpactParameter(_r, incl, _alpha, _M, midpoint_iterations=100, plot_inbetween=False,
-                        n=0, minP=1, initial_guesses=20, elliptic_integral_interval=None, use_ellipse=True,
-                        tol_critical_b=0.1):
+                        n=0, minP=1, initial_guesses=20, elliptic_integral_interval=None, use_ellipse=True) -> float:
     """Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value"""
 
     def eq13_P(__P, __r, __alpha, __M, __incl, __n):
@@ -223,32 +222,23 @@ def calcImpactParameter(_r, incl, _alpha, _M, midpoint_iterations=100, plot_inbe
         elliptic_integral_interval = (70 * np.pi / 180,
                                       2 * np.pi - 70 * np.pi / 180)
 
+    if not (elliptic_integral_interval[0] < _alpha < elliptic_integral_interval[1]):
+        # skip elliptic integrals
+        return float(ellipse(_r, _alpha, incl))
+
     # TODO: an x_range until 1.1*R seems to suffice for isoradials < 30M, but this is guesstimated
     x_ = list(np.linspace(minP, 2. * _r, initial_guesses))  # range of P values without P == 2*M
     x_ = filterP(x_, _M)
     y_ = [eq13_P(P_value, _r, _alpha, _M, incl, n) for P_value in x_]  # values of eq13
     y_ = [y.real if y.imag < 10e-6 else y for y in y_]  # drop tiny imaginary parts
-    if any([y.imag >= 10e-6 for y in y_]):
-        y1 = [float(y.real) for y in y_]
-        y2 = [y.imag for y in y_]  # for testing
-        y3 = [y.real + y.imag for y in y_]  # for testing
-        # fig = plt.figure()
-        # plt.plot(x_, y1)
-        # plt.plot(x_, y2)
-        # plt.show()
-        y_ = y1
+
     ind = np.where(np.diff(np.sign(y_)))[0]
     _P = [x_[i] for i in ind]  # initial guesses for P
-    if any([abs(p.real - 3*_M) < tol_critical_b for p in _P]):  # near critical limit
-        return 5.19695*_M + 3.4823*_M*np.exp(-mu(_P[-1].real, _M))
+
     # If image is ghost image, or direct image with lots of curvature: calculate with elliptic integrals
     if len(_P) and \
             (elliptic_integral_interval[0] < _alpha < elliptic_integral_interval[1] or n or not use_ellipse):
-        # Assume if no P is found, it's because it's in the region without periastron
-        # TODO: check if this assumption is correct, throw error
-        # Side or backside of disk: calculate impact parameter according to elliptic integrals
         _P = improveP([P.real for P in _P], x_, y_, ind, midpoint_iterations, _r, _alpha, _M, incl, n)  # get better P values
-
         if plot_inbetween:
             getPlot(x_, y_, _P).show()
         # TODO: how to correctly assume there is only one solution
@@ -257,6 +247,7 @@ def calcImpactParameter(_r, incl, _alpha, _M, midpoint_iterations=100, plot_inbe
     elif use_ellipse:  # Front side of disk: calculate impact parameter with the ellipse formula
         return float(ellipse(_r, _alpha, incl))
     else:
+        # Should never happen
         # why was no P found?
         # fig = plt.figure()
         # plt.plot(x_, y_)
