@@ -83,15 +83,18 @@ class BlackHole:
         _ax.fill(x_, y_, facecolor='none', zorder=0, edgecolor='white', hatch='////')
         return _ax
 
+    def apparentInnerEdge(self, a):
+        return 3 * np.sqrt(3) * self.M if np.pi / 2 < a < 3 * np.pi / 2 else \
+            min(ellipse(3 * np.sqrt(3) * self.M, a, self.t), 3 * np.sqrt(3) * self.M)  # imact parameter
+
     def plotApparentInnerEdge(self, _ax, c='red'):
         # plot black hole
         x = []
         y = []
         self.solver_params["minP"] = -1
         for a in np.linspace(0, 2 * np.pi, 2 * self.angular_properties["angular_precision"]):
-            b = 3 * np.sqrt(3) * self.M if np.pi / 2 < a < 3 * np.pi / 2 else \
-                min(ellipse(3 * np.sqrt(3) * self.M, a, self.t), 3 * np.sqrt(3) * self.M)
-            rot = -np.pi / 2 if self.t < np.pi/2 else np.pi/2
+            b = self.apparentInnerEdge(a)
+            rot = -np.pi / 2 if self.t < np.pi / 2 else np.pi / 2
             x_, y_ = polarToCartesian([b], [a], rotation=rot)
             x.append(x_)
             y.append(y_)
@@ -272,38 +275,53 @@ class BlackHole:
         plt.show()
 
     def samplePoints(self, minR=None, maxR=None, N=1000, f='points.csv', f2='points_secondary.csv'):
-        # TODO save time here by calculating when secondary image will be visible given some inclination
+        """
+        Samples points on the accretion disk. This sampling is not done uniformly, but a bias is added towards the
+        center of the accretion disk, as the observed flux is exponentially bigger here and this needs the most
+        precision.
+        Both the direct and ghost image for each point is calculated. It's coordinates (polar and cartesian),
+        redshift and
+        :param minR:
+        :param maxR:
+        :param N:
+        :param f:
+        :param f2:
+        :return:
+        """
         df = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f)) else \
-            pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'z_factor', 'flux_o'])
+            pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'angle', 'z_factor', 'flux_o'])
         df2 = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f2)) else \
-            pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'z_factor', 'flux_o'])
+            pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'angle', 'z_factor', 'flux_o'])
 
         minR_ = minR if minR else self.M * 3.01
         maxR_ = maxR if maxR else self.M * 60
-        t = tqdm(range(N))
+        t = tqdm(range(N), desc="Sampling points for direct and ghost image")
         for _ in t:
             t.update(1)
-            r = minR_ + maxR_ * np.sqrt(np.random.random())  # uniformly sampling a circle's surface
+            # r = minR_ + maxR_ * np.sqrt(np.random.random())  # uniformly sampling a circle's surface
+            r = minR_ + maxR_ * np.random.random()  # bias towards center (where the interesting stuff is)
             theta = np.random.random() * 2 * np.pi
             b_ = calcImpactParameter(r, incl=self.t, _alpha=theta, _M=self.M, **self.solver_params)
             b_2 = calcImpactParameter(r, incl=self.t, _alpha=theta, _M=self.M, **self.solver_params, n=1)
             if b_ is not None:
-                x = b_ * np.cos(theta)
-                y = b_ * np.sin(theta)
+                x, y = polarToCartesian([b_], [theta], rotation=-np.pi / 2)
                 redshift_factor_ = redshift_factor(r, theta, self.t, self.M, b_)
                 F_o = flux_observed(r, self.acc, self.M, redshift_factor_)
-                df = df.append(pd.DataFrame({'X': x, 'Y': y, 'impact_parameter': b_, 'z_factor': redshift_factor_, 'flux_o': F_o}, index=[0]))
+                df = df.append(pd.DataFrame({'X': x, 'Y': y, 'impact_parameter': b_,
+                                             'angle': (theta + 3 * np.pi / 2) % (2 * np.pi),
+                                             'z_factor': redshift_factor_, 'flux_o': F_o}, index=[0]))
             if b_2 is not None:
-                theta += np.pi  # TODO: fix dirty manual flip for ghost image
-                x = b_2 * np.cos(theta)
-                y = b_2 * np.sin(theta)
+                theta = (theta + np.pi) % (2 * np.pi)  # TODO: fix dirty manual flip for ghost image
+                x, y = polarToCartesian([b_2], [theta], rotation=-np.pi / 2)
                 redshift_factor_2 = redshift_factor(r, theta, self.t, self.M, b_2)
                 F_o2 = flux_observed(r, self.acc, self.M, redshift_factor_2)
-                df2 = df2.append(pd.DataFrame({'X': x, 'Y': y, 'impact_parameter': b_2, 'z_factor': redshift_factor_2, 'flux_o': F_o2}, index=[0]))
+                df2 = df2.append(pd.DataFrame({'X': x, 'Y': y, 'impact_parameter': b_2,
+                                               'angle': (theta + 3 * np.pi / 2) % (2 * np.pi),
+                                               'z_factor': redshift_factor_2, 'flux_o': F_o2}, index=[0]))
         df.to_csv(f)
         df2.to_csv(f2)
 
-    def plotPoints(self, f='points.csv', f2='points_secondary.csv', powerscale=.7):
+    def plotPoints(self, f='points.csv', f2='points_secondary.csv', powerscale=.7, levels=100):
         """
         Plot the points written out by samplePoints()
         :param f: filename of points (direct image)
@@ -312,24 +330,54 @@ class BlackHole:
         dim points pop out more.
         :return:
         """
-        # _fig, _ax = self.plotIsoradials([6, 20], [6, 20])  # for testing
+
+        def plotDirectImage(_ax, points, _min_flux, _max_flux, _powerscale):
+            # direct image
+            fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _powerscale for fl in points['flux_o']]
+            _ax.tricontourf(points['X'], points['Y'], fluxes, cmap='Greys_r', norm=plt.Normalize(0, 1),
+                            levels=levels,
+                            nchunk=2)
+            br = blackRing(self)
+            _ax.fill_between(br.X, br.Y, color='black')  # to fill Delauney triangulation artefacts with black
+            return _ax
+
+        def plotGhostImage(_ax, points, _levels, _min_flux, _max_flux, _powerscale):
+            # ghost image
+            cross_angle = np.pi / 40  # about where the ghost image dips under the accretion disk
+            points = points.loc[(points['angle'] < np.pi + cross_angle) |
+                                (points['angle'] > 2 * np.pi - cross_angle)]
+            points.sort_values(by=['flux_o'], ascending=False)
+            N_chunks = _levels // 20
+            for level in range(N_chunks):
+                points_chunk = points[level * len(points) // N_chunks: (level + 1) * len(points) // N_chunks]
+                fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _powerscale for fl in points_chunk['flux_o']]
+                color = [cm.ScalarMappable(cmap="Greys_r", norm=plt.Normalize(0, 1)).to_rgba(flux)
+                         for flux in fluxes]
+                # make sure brightest points are on top
+                _ax.scatter(points_chunk['X'], points_chunk['Y'], color=color, zorder=_levels - level + 1,
+                            s=.5)
+            return _ax
+
+        def blackRing(_bh):
+            ir = Isoradial(R=6 * self.M, incl=self.t, order=0, _solver_params=_bh.solver_params, mass=_bh.M)
+            ir.radii_b = [.99 * b for b in ir.radii_b]
+            ir.X, ir.Y = polarToCartesian(ir.radii_b, ir.angles, rotation=-np.pi / 2)
+            return ir
+
         _fig, _ax = self.__getFigure()
         points1 = pd.read_csv(f)
+        # points1 = addBlackRing(self, points1)
         points2 = pd.read_csv(f2)
-        points2 = points2[points2['X'] < 0]  # dirty hack to fix overlapping images where there shouldn't be
-        # TODO: how to properly show ghost ring?
         max_flux = max(max(points1['flux_o']), max(points2['flux_o']))
         min_flux = 0
-        for i, points in enumerate([points1, points2]):
-            points = points[(points['flux_o'] > 0)]
-            fluxes = [(abs(fl + min_flux) / (max_flux + min_flux))**powerscale for fl in points['flux_o']]
-            color = [cm.ScalarMappable(cmap="Greys_r", norm=plt.Normalize(0, 1)).to_rgba(flux) for flux in fluxes]
-            _l = plt.scatter(points['X'], points['Y'], alpha=1, color=color, zorder=i)
-            _l.set_sizes([7] * len(points))
+
+        _ax = plotDirectImage(_ax, points1, min_flux, max_flux, powerscale)
+        _ax = plotGhostImage(_ax, points2, levels, min_flux, max_flux, powerscale)
+
         _ax.set_xlim((-40, 40))
         _ax.set_ylim((-40, 40))
 
-        plt.savefig('SampledPoints_incl={}.png'.format(self.t), dpi=300)
+        plt.savefig('SampledPoints_incl={}.png'.format(self.t), dpi=300, facecolor='black')
         plt.show()
 
 
@@ -408,7 +456,7 @@ class Isoradial:
             angles = [a_ + np.pi for a_ in angles]
         self.angles = angles
         self.radii_b = impact_parameters
-        self.X, self.Y = polarToCartesian(self.radii_b, self.angles, rotation=-np.pi/2)
+        self.X, self.Y = polarToCartesian(self.radii_b, self.angles, rotation=-np.pi / 2)
         return angles, impact_parameters
 
     def calcRedshiftFactors(self):
@@ -684,7 +732,7 @@ class Isoredshift:
 
         # assert self.maxR is not None, "Max radius not defined or calculated. Aborting."
         for b, e in zip(ir_radii_w_co[:-1], ir_radii_w_co[1:]):  # isoradial intervals
-            r_inbtw = .5*(b+e)
+            r_inbtw = .5 * (b + e)
             # TODO: calc isoradial inbetween.
             ir = Isoradial(R=r_inbtw, incl=self.t, mass=self.M,
                            angular_properties={'start_angle': 0,
@@ -730,6 +778,7 @@ class Isoredshift:
             if len(a) > 0:
                 self.coordinates[ir_radius_wo_co] = [a, r]  # update this radius with new coordinates
         self.co = self.angles, self.radii = self.__extractCo(self.coordinates)  # update coordinates
+
 
 def polarToCartesian(radii, angles, rotation=0):
     x = []
@@ -780,25 +829,16 @@ def getAngleAround(p1, p2):
 if __name__ == '__main__':
     M = 1.
     bh = BlackHole(inclination=80, mass=M)
-    bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
+    # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
     bh.solver_params = {'initial_guesses': 12,
                         'midpoint_iterations': 11,  # 5 is fine for direct image. Up until 10 for ghost image of large R
                         'plot_inbetween': False,
                         'minP': 3.01,
-                        'elliptic_integral_interval': (0, 2 * np.pi),  # which section should be calculated with an elliptic integral
+                        'elliptic_integral_interval': (0, 2 * np.pi),
+                        # which section should be calculated with an elliptic integral
                         'use_ellipse': True}
     bh.plot_params['plot_core'] = False
     bh.angular_properties['angular_precision'] = 100
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
-    # bh.samplePoints(N=200, minR=20, maxR=40)  # maxR of 40 suffices for direct image, but needs up until 60 to hide ghost image because of lazy programming to properly deal with this
+    # bh.samplePoints(N=5000, minR=6, maxR=40)
     bh.plotPoints(powerscale=1)
-    # fig, ax = bh.plotIsoRedshifts(redshifts=[-.2])
-    # bh.angular_properties['start_angle'] = np.pi/2
-    # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [], show=False)
-    # x, y = [2 * np.cos(th) for th in np.linspace(0, 2 * np.pi, 100)], \
-    #        [2 * np.sin(th) for th in np.linspace(0, 2 * np.pi, 100)]
-    # ax.plot(x, y, color='red')
-    # plt.show()
-
-    # bh.plotIsoRedshifts(minR=3.*M, maxR=60*M, r_precision=10, midpoint_steps=5,
-    #                     redshifts=[-.15, -.1, -.05, 0., 0.05, 0.1, .15, .25, .5, .75])
