@@ -3,6 +3,9 @@ This repo provides material for recreating the famous paper by Jean-Pierre Lumin
 <p align="middle">
 <img src=movie/BH_with_redshift.gif max_width="400" max_height="400"/>
 </p>
+<p align="middle">
+<img src=SampledPoints_incl=10.png max_width="400" max_height="400"/>
+</p>
 
 # Usage
 
