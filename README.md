@@ -1,11 +1,10 @@
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
-<p align="middle">
-<img src=movie/BH_with_redshift.gif max_width="400" max_height="400"/>
-</p>
-<p align="middle">
-<img src=SampledPoints_incl=10.png max_width="400" max_height="400"/>
-</p>
+<table><tr>
+<td> <img src="movie/BH_with_redshift.gif?raw=true" alt="BH_redshift" /> </td>
+<td> <img src="SampledPoints_incl=10.png" alt="Picture" /> </td>
+</tr></table>
+
 
 # Usage
 
@@ -44,12 +43,14 @@ Added functionality to calculate redshifts and isoredshift lines
 - Identified errors in the paper. This explains the large redshift values. Fixed these errors and annotated them in the code.
 - Added functionality to plot over the original figure to check for these errors (only the figure of isoradial lines at incl=60°)
 
+(24/2/2022)
+- Fixed redshift
+- Can now sample points in (R, alpha) space. Luminet started from the isofluxlines though, which may be (will probably be) more efficient.
+
 # TODO
 
 1. Flux
-  - Calculate flux based on redshift
-  - Calculate isofluxlines
+  - Calculate isofluxlines in some efficiënt manner (can now be reconstructed from sampled points, but it would be neat to sample points based on isofluxlines). Perhaps calulating some points and reconstructing the lines?
 
-2. Image
-  - Randomly sample points in (R, a) space. Calculate observer coordinates (b, a), redshift and flux. Write to file.
-  - Plot file with locagions, redshifts and fluxes
+2. Redshift
+- Finish implementation of Redshift class. Finish algorithm to calculate tip of closing redshift curves with midpoints method. Finish calculating between known solutions to improve isoredshift lines.
