@@ -17,7 +17,7 @@ bh = BlackHole(inclination=80, mass=M)
 # Calculate single isoradial
 ir = Isoradial(R=30 * M, incl=80 * np.pi / 180, mass=M, order=0)
 ir.calculate()
-ir.plotRedshift()  # plot its redshifts along the line
+ir.plot_redshift()  # plot its redshifts along the line
 
 # plot isoradial lines
 bh.plotIsoradials([6, 10, 20, 30], [6, 10, 20, 30])
