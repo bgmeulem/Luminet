@@ -1,102 +1,115 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import mpmath
-from typing import Tuple, Dict
+from scipy.special import ellipj, ellipk, ellipkinc
+from typing import Dict
 from tqdm import tqdm
+# import mpmath
 
 plt.style.use('fivethirtyeight')
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # six fivethirtyeight themed colors
 
 
-def calc_q(periastron: float, bh_mass: float) -> float:
-    """Convert Periastron distance P to Q (easier to work with)"""
-    q = mpmath.sqrt((periastron - 2. * bh_mass) * (periastron + 6. * bh_mass))
+def calc_q(periastron: float, bh_mass: float, tol=1e-3) -> float:
+    """
+    Convert Periastron distance P to the variable Q (easier to work with)
+    """
+    # limits give no substantial speed improvement
+    # if periastron - 2. * bh_mass < tol:
+    #     # limit for small values
+    #     return .5 * (periastron - 2. * bh_mass) * (periastron + 6. * bh_mass)
+    # if 1/periastron < tol:
+    #     # limit for large values
+    #     return periastron
+    # if periastron <= 2*bh_mass:
+    #     raise ValueError("Non-physical periastron found (P <= 2M, aka the photon sphere)."
+    #                      "If you want to calculate non-physical values, you should implement the mpmath library")
+    q = np.sqrt((periastron - 2. * bh_mass) * (periastron + 6. * bh_mass))
     # Q is complex if P < 2M = r_s
     return q
 
 
 def calc_b_from_periastron(periastron: float, bh_mass: float, tol: float = 1e-5) -> float:
-    """Get impact parameter b from Periastron distance P"""
-    if abs(periastron) < tol:  # could physically never happen
-        print("tolerance exceeded for calc_b_from_P(P_={}, M={}, tol={}".format(periastron, bh_mass, tol))
-        return mpmath.sqrt(3 * periastron ** 2)
+    """
+    Get impact parameter b from Periastron distance P
+    """
+    # limits give no substantial speed improvement
+    # if abs(periastron) < tol:  # could physically never happen
+    #     print("tolerance exceeded for calc_b_from_P(P_={}, M={}, tol={}".format(periastron, bh_mass, tol))
+    #     return np.sqrt(3 * periastron ** 2)
     # WARNING: the paper most definitely has a typo here. The fracture on the right hand side equals b², not b.
     # Just fill in u_2 in equation 3, and you'll see. Only this way do the limits P -> 3M and P >> M hold true,
     # as well as the value for b_c
-    return mpmath.sqrt(periastron ** 3 / (periastron - 2. * bh_mass))  # the impact parameter
+    return np.sqrt(periastron ** 3 / (periastron - 2. * bh_mass))  # the impact parameter
 
 
 def k(periastron: float, bh_mass: float) -> float:
-    """Calculate modulus of elliptic integral"""
+    """
+    Calculate modulus of elliptic integral
+    """
     q = calc_q(periastron, bh_mass)
-    if q < 10e-3:  # numerical stability
-        return mpmath.sqrt(.5)
-    else:
-        # WARNING: Paper has an error here. There should be brackets around the numerator.
-        return mpmath.sqrt((q - periastron + 6 * bh_mass) / (2 * q))  # the modulus of the ellipitic integral
+    # adding limits does not substantially improve speed, nor stability
+    # if q < 10e-3:  # numerical stability
+    #     return np.sqrt(.5)
+    # WARNING: Paper has an error here. There should be brackets around the numerator.
+    return np.sqrt((q - periastron + 6 * bh_mass) / (2 * q))  # the modulus of the elliptic integral
 
 
 def k2(periastron: float, bh_mass: float, tol: float = 1e-6):
     """Calculate the squared modulus of elliptic integral"""
     q = calc_q(periastron, bh_mass)
-    # TODO: add inf / inf
+    # adding limits does not substantially improve speed
+    # if 1 / periastron <= tol:
+    #     # limit of P -> inf, Q -> P
+    #     return 0.
     # WARNING: Paper has an error here. There should be brackets around the numerator.
     return (q - periastron + 6 * bh_mass) / (2 * q)  # the modulus of the ellipitic integral
 
 
 def zeta_inf(periastron: float, bh_mass: float, tol: float = 1e-6) -> float:
-    """Calculate Zeta_inf for elliptic integral F(Zeta_inf, k)"""
+    """
+    Calculate Zeta_inf for elliptic integral F(Zeta_inf, k)
+    """
     q = calc_q(periastron, bh_mass)  # Q variable, only call to function once
     arg = (q - periastron + 2 * bh_mass) / (q - periastron + 6 * bh_mass)
-    z_inf = mpmath.asin(mpmath.sqrt(arg))
+    z_inf = np.arcsin(np.sqrt(arg))
     return z_inf
 
 
-def zeta_r(periastron: float, r: float, M: float) -> float:
-    """Calculate the elliptic integral argument Zeta_r for a given value of P and r"""
-    q = calc_q(periastron, M)
-    a = (q - periastron + 2 * M + (4 * M * periastron) / r) / (q - periastron + (6 * M))
-    s = mpmath.asin(mpmath.sqrt(a))
+def zeta_r(periastron: float, r: float, bh_mass: float) -> float:
+    """
+    Calculate the elliptic integral argument Zeta_r for a given value of P and r
+    """
+    q = calc_q(periastron, bh_mass)
+    a = (q - periastron + 2 * bh_mass + (4 * bh_mass * periastron) / r) / (q - periastron + (6 * bh_mass))
+    s = np.arcsin(np.sqrt(a))
     return s
 
 
 def cos_gamma(_a: float, incl: float, tol=10e-5) -> float:
-    """Calculate the cos of the angle gamma"""
+    """
+    Calculate the cos of the angle gamma
+    """
     if abs(incl) < tol:
         return 0
-    else:
-        return mpmath.cos(_a) / mpmath.sqrt(mpmath.cos(_a) ** 2 + mpmath.cot(incl) ** 2)  # real
+    return np.cos(_a) / np.sqrt(np.cos(_a) ** 2 + 1/(np.tan(incl) ** 2))  # real
 
 
 def cos_alpha(phi: float, incl: float) -> float:
     """Returns cos(angle) alpha in observer frame given angles phi (black hole frame) and
     inclination (black hole frame)"""
-    return mpmath.cos(phi) * mpmath.cos(incl) / mpmath.sqrt((1 - mpmath.sin(incl) ** 2 * mpmath.cos(phi) ** 2))
+    return np.cos(phi) * np.cos(incl) / np.sqrt((1 - np.sin(incl) ** 2 * np.cos(phi) ** 2))
 
 
 def alpha(phi: float, incl: float):
     """Returns observer coordinate of photon given phi (BHF) and inclination (BHF)"""
-    return mpmath.acos(cos_alpha(phi, incl))
+    return np.arccos(cos_alpha(phi, incl))
 
 
-def F(zeta: float, m):
-    """Calculates the incomplete elliptic integral of argument zeta and mod m = k²
-    Args:
-        zeta: the argument of the elliptic integral
-        m: the modulus of the elliptic integral. mpmath takes m=k² as modulus
-    Returns:
-        float: the value of the elliptic integral of argument zeta and modulus m=k²"""
-    return mpmath.ellipf(zeta, m)  # takes k**2 as mod, not k
-
-
-def K(m):
-    """Calculates the complete elliptic integral of mod m=k²"""
-    return mpmath.ellipf(np.pi / 2, m)
-
-
-def filterP(periastron: np.ndarray, bh_mass: float, tol: float = 10e-3) -> []:
-    """removes instances where P == 2*M
-    returns indices where this was the case"""
+def filter_periastrons(periastron: [], bh_mass: float, tol: float = 10e-3) -> []:
+    """
+    Removes instances where P == 2*M
+    returns indices where this was the case
+    """
     return [e for e in periastron if abs(e - 2. * bh_mass) > tol]
 
 
@@ -107,25 +120,26 @@ def eq13(periastron: float, _r: float, _a: float, bh_mass: float, incl: float, n
 
     This function get called almost everytime when you need to calculate some black hole property
     """
-    z_inf= zeta_inf(periastron, bh_mass)
+    z_inf = zeta_inf(periastron, bh_mass)
     q = calc_q(periastron, bh_mass)
     m_ = k2(periastron, bh_mass)  # modulus of the elliptic integrals. mpmath takes m = k² as argument.
-    ellinf = F(z_inf
-, m_)  # Elliptic integral F(z# # nf), k)
-    g = mpmath.acos(cos_gamma(_a, incl))  # real
+    ell_inf = ellipkinc(z_inf, m_)  # Elliptic integral F(zeta_inf, k)
+    g = np.arccos(cos_gamma(_a, incl))  # real
 
     # Calculate the argument of sn (mod is m = k², same as the original elliptic integral)
     # WARNING: paper has an error here: \sqrt(P / Q) should be in denominator, not numerator
     # There's no way that \gamma and \sqrt(P/Q) can end up on the same side of the division
     if n:  # higher order image
-        ellK = K(m_)  # calculate complete elliptic integral of mod m = k²
-        ellips_arg = (g - 2. * n * np.pi) / (2. * mpmath.sqrt(periastron / q)) - ellinf + 2. * ellK
+        ell_k = ellipk(m_)  # calculate complete elliptic integral of mod m = k²
+        ellips_arg = (g - 2. * n * np.pi) / (2. * np.sqrt(periastron / q)) - ell_inf + 2. * ell_k
     else:  # direct image
-        ellips_arg = g / (2. * mpmath.sqrt(periastron / q)) + ellinf  # complex
+        ellips_arg = g / (2. * np.sqrt(periastron / q)) + ell_inf  # complex
 
     # sn is an Jacobi elliptic function: elliptic sine. ellipfun() takes 'sn'
     # as argument to specify "elliptic sine" and modulus m=k²
-    sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
+    # sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
+    # TODO: let's test if scipy is quicker than mpmath - uses Cephes library written in C
+    sn, cn, dn, ph = ellipj(ellips_arg, m_)
     sn2 = sn * sn
     # sn2 = float(sn2.real)
     term1 = -(q - periastron + 2. * bh_mass) / (4. * bh_mass * periastron)
@@ -153,9 +167,9 @@ def write_frames_eq13(radius: float, solver_params: Dict, incl: float = 10., M: 
 
         s = calc_impact_parameter(radius, incl, a, M, **solver_params, use_ellipse=False)
         x = np.linspace(solver_params["minP"], 1.01 * radius, 100)
-        x_range = filterP(x, M)
+        x_range = filter_periastrons(x, M)
         y = [eq13_P(x_).real for x_ in x_range]
-        x = [calc_b_from_periastron(p, M) for p in filterP(x, M)]
+        x = [calc_b_from_periastron(p, M) for p in filter_periastrons(x, M)]
 
         ax.clear()
         ax.set_xlabel('P')
@@ -230,7 +244,7 @@ def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, pl
 
     # TODO: an x_range until 1.1*R seems to suffice for isoradials < 30M, but this is guesstimated
     x_ = list(np.linspace(min_periastron, 2. * _r, initial_guesses))  # range of P values without P == 2*M
-    x_ = filterP(x_, bh_mass)
+    x_ = filter_periastrons(x_, bh_mass)
     y_ = [eq13_P(P_value, _r, _alpha, bh_mass, incl, n) for P_value in x_]  # values of eq13
     y_ = [y.real if y.imag < 10e-6 else y for y in y_]  # drop tiny imaginary parts
 
@@ -254,14 +268,14 @@ def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, pl
         # plt.plot(x_, y_)
         # plt.show()
         raise ValueError(f"No solution was found for the periastron at (r, a) = ({_r}, {_alpha}) and incl={incl}")
-        return None  # TODO: implement
+        # return None  # TODO: implement
 
 
 def phi_inf(periastron, M):
     q = calc_q(periastron, M)
     ksq = (q - periastron + 6. * M) / (2. * q)
     z_inf = zeta_inf(periastron, M)
-    phi = 2. * (mpmath.sqrt(periastron / q)) * (mpmath.ellipk(ksq) - mpmath.ellipf(z_inf, ksq))
+    phi = 2. * (np.sqrt(periastron / q)) * (ellipk(ksq) - ellipkinc(z_inf, ksq))
     return phi
 
 
@@ -273,8 +287,8 @@ def ellipse(r, a, incl):
     """Equation of an ellipse, reusing the definition of cos_gamma.
     This equation can be used for calculations in the Newtonian limit (large P = b, small a)
     or to visualize the equatorial plane."""
-    g = mpmath.acos(cos_gamma(a, incl))
-    b_ = r * mpmath.sin(g)
+    g = np.arccos(cos_gamma(a, incl))
+    b_ = r * np.sin(g)
     return b_
 
 
@@ -295,7 +309,7 @@ def flux_observed(r, acc, bh_mass, redshift_factor):
 def redshift_factor(radius, angle, incl, M, b_):
     """Calculate the redshift factor (1 + z), ignoring cosmological redshift."""
     # TODO: the paper makes no sense here
-    gff = (radius * mpmath.sin(incl) * mpmath.sin(angle)) ** 2
+    gff = (radius * np.sin(incl) * np.sin(angle)) ** 2
     gtt = - (1 - (2. * M) / radius)
     z_factor = (1. + np.sqrt(M / (radius ** 3)) * b_ * np.sin(incl) * np.sin(angle)) * \
                (1 - 3. * M / radius) ** -.5
@@ -314,8 +328,8 @@ def find_a(b_, z, incl, M, r_):
 def getPFromB(b, M):
     # TODO: please don't ever use this
     num1 = 3**(2/3)*b**2
-    num2 = 3**(1/3) * (mpmath.sqrt(81*b**4 * M**2 - 3*b**6) - 9 * b**2 * M)
-    denom3 = mpmath.sqrt(81*b**4 * M**2 - 3*b**6) - 9*b**2 * M
+    num2 = 3**(1/3) * (np.sqrt(81*b**4 * M**2 - 3*b**6) - 9 * b**2 * M)
+    denom3 = np.sqrt(81*b**4 * M**2 - 3*b**6) - 9*b**2 * M
     denom = 3*denom3**(1/3)
     s = (num1 + num2) / denom
     return s

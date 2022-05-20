@@ -1,8 +1,10 @@
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
+<img src="SampledPoints_incl=10.png" alt="Picture" />
+
 <table><tr>
 <td> <img src="movie/BH_with_redshift.gif?raw=true" alt="BH_redshift" /> </td>
-<td> <img src="SampledPoints_incl=10.png" alt="Picture" /> </td>
+<td> <img src="Plots/isoredshifts.gif?raw=true" alt="isoredshifts" /> </td>
 </tr></table>
 
 

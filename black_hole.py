@@ -12,7 +12,7 @@ colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # six fivethirtyeigh
 
 
 class BlackHole:
-    def __init__(self, mass=1, inclination=80, acc=10e-8):
+    def __init__(self, mass=1., inclination=80, acc=10e-8):
         """Initialise black hole with mass and accretion rate
         Set viewer inclination above equatorial plane
         """
@@ -268,7 +268,14 @@ class BlackHole:
         plt.suptitle("Isoredshift lines for M={}".format(self.M))
         plt.show()
 
-    def samplePoints(self, minR=None, maxR=None, N=1000, f='points.csv', f2='points_secondary.csv'):
+    def black_ring(self):
+        ir = Isoradial(radius=6 * self.M, incl=self.t, order=0,
+                       _solver_params=self.solver_params, bh_mass=self.M)
+        ir.radii_b = [.99 * b for b in ir.radii_b]
+        ir.X, ir.Y = polar_to_cartesian_lists(ir.radii_b, ir.angles, rotation=-np.pi / 2)
+        return ir
+
+    def sample_points(self, minR=None, maxR=None, N=1000, f=None, f2=None):
         """
         Samples points on the accretion disk. This sampling is not done uniformly, but a bias is added towards the
         center of the accretion disk, as the observed flux is exponentially bigger here and this needs the most
@@ -277,11 +284,15 @@ class BlackHole:
         redshift and
         :param minR:
         :param maxR:
-        :param N:
+        :param N: Amount of points to sample. 10k takes about 6 minutes and gives satisfactory precision for the most part.
         :param f:
         :param f2:
         :return:
         """
+        if f is None:
+            f = f"points_incl={int(self.t*180/np.pi)}.csv"
+        if f2 is None:
+            f2 = f"points_secondary_incl={int(self.t*180/np.pi)}.csv"
         df = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f)) else \
             pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'angle', 'z_factor', 'flux_o'])
         df2 = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f2)) else \
@@ -318,7 +329,7 @@ class BlackHole:
         df.to_csv(f)
         df2.to_csv(f2)
 
-    def plotPoints(self, f='points.csv', f2='points_secondary.csv', powerscale=.7, levels=100):
+    def plotPoints(self, f='points_incl=80.0.csv', f2='points_secondary_incl=80.0.csv', powerscale=.7, levels=100):
         """
         Plot the points written out by samplePoints()
         :param f: filename of points (direct image)
@@ -378,31 +389,36 @@ class BlackHole:
         plt.savefig('SampledPoints_incl={}.png'.format(self.t), dpi=300, facecolor='black')
         plt.show()
 
-    def plot_isoredshifts_from_points(self, f='points.csv', levels=500):
-        def blackRing(_bh):
-            ir = Isoradial(radius=6 * self.M, incl=self.t, order=0, _solver_params=_bh.solver_params, bh_mass=_bh.M)
-            ir.radii_b = [.99 * b for b in ir.radii_b]
-            ir.X, ir.Y = polar_to_cartesian_lists(ir.radii_b, ir.angles, rotation=-np.pi / 2)
-            return ir
+    def plot_isoredshifts_from_points(self, levels=None, extension="png", ax_lim=None):
+        # TODO add ghost image
+
+        if levels is None:
+            levels = [-.2, -.15, -.1, -0.05, 0., .05, .1, .15, .2, .25, .5, .75]
+
         _fig, _ax = self.__getFigure()
-        points = pd.read_csv(f)
-        br = blackRing(self)
+        points = pd.read_csv(f"points_incl={int(round(self.t*180/np.pi))}.csv")
+        br = self.black_ring()
         color_map = plt.get_cmap('RdBu_r')
-        norm = mpl.colors.Normalize(-1, 1)
 
         # points1 = addBlackRing(self, points1)
-        mn, mx = min(points['X']), max(points['X'])
         levels_ = [-.2, -.15, -.1, -0.05, 0., .05, .1, .15, .2, .25, .5, .75]
-        _ax.tricontour(points['X'], points['Y'], [e for e in points['z_factor']], cmap=color_map,
+        _ax.tricontour(points['X'], points['Y'] if self.t <= np.pi/2 else [-e for e in points['Y']], # TODO why do I have to flip it myself
+                       [e for e in points['z_factor']], cmap=color_map,
                        norm=plt.Normalize(0, 2),
                        levels=[e + 1 for e in levels_],
                        nchunk=2,
                        linewidths=1)
         _ax.fill_between(br.X, br.Y, color='black', zorder=2)
-        _ax.set_xlim((mn, mx))
-        _ax.set_ylim((mn, mx))
+
+        if ax_lim:
+            _ax.set_ylim(ax_lim)
+            _ax.set_xlim(ax_lim)
+        else:
+            mn, mx = min(points['X']), max(points['X'])
+            _ax.set_xlim((mn, mx))
+            _ax.set_ylim((mn, mx))
         plt.show()
-        _fig.savefig(f"Plots/Isoredshifts_incl={180*self.t/np.pi}.svg", facecolor='black', dpi=300)
+        _fig.savefig(f"Plots/Isoredshifts_incl={str(int(180*self.t/np.pi)).zfill(3)}.{extension}", facecolor='black', dpi=300)
 
 
 class Isoradial:
@@ -1038,21 +1054,22 @@ def get_angle_around(p1, p2):
 
 if __name__ == '__main__':
     M = 1.
-    bh = BlackHole(inclination=80, mass=M)
-    # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
-    bh.solver_params = {'initial_guesses': 12,
-                        'midpoint_iterations': 11,  # 5 is fine for direct image. Up until 10 for ghost image of large R
-                        'plot_inbetween': False,
-                        'min_periastron': 3.01,
-                        'elliptic_integral_interval': (0, 2 * np.pi),
-                        # which section should be calculated with an elliptic integral
-                        'use_ellipse': True}
-    bh.plot_params['plot_core'] = False
-    bh.plot_params['plot_isoredshifts_inbetween'] = False
-    bh.angular_properties['angular_precision'] = 100
-    # bh.samplePoints(N=10000, maxR=200)
-    #bh.plotIsoRedshifts(redshifts=[-.15], r_precision=20)
-    bh.plot_isoredshifts_from_points()
+    for i in range(18):
+        bh = BlackHole(inclination=5*i, mass=M)
+        # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
+        bh.solver_params = {'initial_guesses': 12,
+                            'midpoint_iterations': 11,  # 5 is fine for direct image. Up until 10 for ghost image of large R
+                            'plot_inbetween': False,
+                            'min_periastron': 3.01,
+                            'elliptic_integral_interval': (0, 2 * np.pi),
+                            # which section should be calculated with an elliptic integral
+                            'use_ellipse': True}
+        bh.plot_params['plot_core'] = False
+        bh.plot_params['plot_isoredshifts_inbetween'] = False
+        bh.angular_properties['angular_precision'] = 100
+        # bh.sample_points(N=10000, maxR=60)
+        # bh.plotIsoRedshifts(redshifts=[-.15], r_precision=20)
+        bh.plot_isoredshifts_from_points(ax_lim=(-35, 35))
     # TODO: check why Isoredshift.calcInbetween doesn't always find a solution
     # TODO: split on jump
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
