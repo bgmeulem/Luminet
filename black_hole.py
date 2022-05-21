@@ -407,7 +407,7 @@ class BlackHole:
                        norm=plt.Normalize(0, 2),
                        levels=[e + 1 for e in levels_],
                        nchunk=2,
-                       linewidths=1)
+                       linewidths=2)
         _ax.fill_between(br.X, br.Y, color='black', zorder=2)
 
         if ax_lim:
@@ -1054,7 +1054,7 @@ def get_angle_around(p1, p2):
 
 if __name__ == '__main__':
     M = 1.
-    for i in range(18):
+    for i in range(36):
         bh = BlackHole(inclination=5*i, mass=M)
         # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
         bh.solver_params = {'initial_guesses': 12,
