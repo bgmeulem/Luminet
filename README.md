@@ -45,10 +45,21 @@ Added functionality to calculate redshifts and isoredshift lines
 - Fixed redshift
 - Can now sample points in (R, alpha) space. Luminet started from the isofluxlines though, which may be (will probably be) more efficient.
 
+(20/5/2022) 
+- changed from mpmath library to scipy for the calculation of elliptic integrals. Mpmath was only useful for support of complex solutions, which correspond to non-physical solutions. This support is now deprecated for the benefit of speed (about 2 to 6 times as fast now). 
+- main method of calculating isoredshifts is now done by sampling the entire accretion disk space and making a contour plot of the resulting points. Algortihmically calculating the isoredshifts is still possible, but needs revision. When the isoradial corresponding to some (b, α, z) coordinate has a sharp intersection with the isoredshift (z), it needs a lot of angular precision to properly intersect and thus calculate the solution (b, α, z). I should implement something that can adaptive ly check if this intersection is indeed sharp and put angular precision where it belongs. For now, it just does not intersect and does not find solutions for all locations along some isoredshift line. 
+- added gif of rotating isoredshift values for varying inclination. 
 # TODO
 
 1. Flux
   - Calculate isofluxlines in some efficiënt manner (can now be reconstructed from sampled points, but it would be neat to sample points based on isofluxlines). Perhaps calulating some points and reconstructing the lines?
 
 2. Redshift
-- Finish implementation of Redshift class. Finish algorithm to calculate tip of closing redshift curves with midpoints method. Finish calculating between known solutions to improve isoredshift lines.
+- revise algortihmically calculating is redshift lines 
+
+3. General
+- revise code structure. Is an isoredshift class necessary? 
+- implement data classes
+- implement black hole accretion disk size property (for easier plotting of ghost images) 
+- add isoredshift ghost image plotting 
+- add video of rotating black hole
