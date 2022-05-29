@@ -18,15 +18,15 @@ ir.calculate()
 ir.plot_redshift()  # plot its redshifts along the line
 
 # plot isoradial lines
-bh.plotIsoradials([6, 10, 20, 30], [6, 10, 20, 30])
+bh.plot_isoradials([6, 10, 20, 30], [6, 10, 20, 30])
 
 # write frames for a gif of rotating isoradial lines
-bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5,
-               ax_lim=(-35, 35))
+bh.write_frames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5,
+                ax_lim=(-35, 35))
 
 # plot lines of equal redshift values
-bh.plotIsoRedshifts(minR=5, maxR=80, r_precision=20, midpoint_steps=5,
-                    redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.])
+bh.plot_isoredshifts(minR=5, maxR=80, r_precision=20, midpoint_steps=5,
+                     redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.])
 ```
 
 # Latest updates:

@@ -6,6 +6,7 @@ import matplotlib.collections as mcoll
 import matplotlib.image as img
 from collections import OrderedDict
 from black_hole_math import *
+import configparser
 
 plt.style.use('fivethirtyeight')
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # six fivethirtyeight themed colors
@@ -19,37 +20,22 @@ class BlackHole:
         self.t = inclination * np.pi / 180
         self.M = mass
         self.acc = acc  # accretion rate
-        self.angular_properties = \
-            {'start_angle': 0,
-             'end_angle': np.pi,
-             'angular_precision': 60,
-             'mirror': True}
-        self.solver_params = \
-            {'initial_guesses': 20,
-             'midpoint_iterations': 6,
-             'plot_inbetween': False,
-             'minP': 3.1 * self.M,
-             'elliptic_integral_interval': (70 * np.pi / 180,
-                                            2 * np.pi - 70 * np.pi / 180),
-             'use_ellipse': True}
-        self.plot_params = \
-            {'plot_isoredshifts_inbetween': False,
-             'save_plot': False,
-             'plot_ellipse': False,
-             'plot_core': True,
-             'redshift': True,
-             'linestyle': '-',
-             'key': "",
-             'face_color': 'black',
-             'line_color': 'white',
-             'text_color': 'white',
-             'alpha': 1.,
-             'show_grid': False,
-             'legend': False,
-             'orig_background': False,
-             'title': "Isoradials for M = {}".format(self.M)}
+        self.settings = {}
+        self.angular_properties = {}
+        self.plot_params = {}
+        self.solver_params = {}
+        self.__read_parameters()
         self.isoradials = {}
         self.isoredshifts = {}
+
+    def __read_parameters(self):
+        config = configparser.ConfigParser(inline_comment_prefixes='#')
+        config.read('parameters.ini')
+        for i, section in enumerate(config.sections()):
+            self.settings[section] = {key: eval(val) for key, val in config[section].items()}
+        self.plot_params = self.settings["plot_params"]
+        self.solver_params = self.settings["solver_params"]
+        self.angular_properties = self.settings["angular_properties"]
 
     def core(self, _alpha, radius):
         if _alpha < 0:
@@ -71,7 +57,7 @@ class BlackHole:
             x_, y_ = polar_to_cartesian_lists([b], [a])
             x.append(x_)
             y.append(y_)
-        self.solver_params["minP"] = 3.1 * self.M
+        self.solver_params["minP"] = 3.01 * self.M
         _ax.plot(x, y, color=c, zorder=0)
         # plot critical value of b
         x_, y_ = polar_to_cartesian_lists([5.2] * 2 * self.angular_properties["angular_precision"],
@@ -99,11 +85,11 @@ class BlackHole:
             x_, y_ = polar_to_cartesian_lists([b], [a], rotation=rot)
             x.append(x_)
             y.append(y_)
-        self.solver_params["minP"] = 3.1 * self.M
+        self.solver_params["minP"] = 3.01 * self.M
         _ax.plot(x, y, color=c, zorder=0, linestyle='--')
         return _ax
 
-    def __getFigure(self):
+    def __get_figure(self):
         _fig = plt.figure(figsize=(10, 10))
         _ax = _fig.add_subplot(111)
         plt.axis('off')  # command for hiding the axis.
@@ -117,26 +103,25 @@ class BlackHole:
             _ax.grid()
         return _fig, _ax
 
-    def setInclination(self, incl):
+    def set_inclination(self, incl):
         self.t = incl * np.pi / 180
 
-    def calcIsoRedshift(self, _redshift, _dirty_isoradials, cartesian=False):
-        """Calculates the isoredshift for a single redshift value"""
+    def calc_isoredshift(self, _redshift, _dirty_isoradials, cartesian=False):
+        """
+        Calculates the isoredshift for a single redshift value, based on a couple of isoradials calculated
+        at low precision
+        """
         solutions = OrderedDict()
         _maxR = None
-        t = tqdm(_dirty_isoradials, position=1, leave=False)
         for ir in _dirty_isoradials:
-            t.set_description("Calculating isoredshift {} at R={:.2f}".format(_redshift, ir.radius))
-            t.update()
             # Use the same solver params from the black hole to calculate the redshift location on the isoradial
-            a, r = ir.calc_redshift_location(_redshift, self.solver_params['midpoint_iterations'],
-                                             cartesian=cartesian)
+            a, r = ir.calc_redshift_location_on_ir(_redshift, cartesian=cartesian)
             solutions[ir.radius] = [a, r]
         # initialise an Isoredshift with the coordinates calculated above instance and return
         return Isoredshift(inclination=self.t, redshift=_redshift, bh_mass=self.M, ir_solver_params=self.solver_params,
                            coordinates=solutions)
 
-    def calcIsoRedshifts(self, minR=6, maxR=60, r_precision=10, redshifts=None):
+    def calc_isoredshifts(self, minR=6, maxR=60, r_precision=10, redshifts=None):
         if redshifts is None:
             redshifts = [-.15, 0., .1, .20, .5]
 
@@ -158,19 +143,19 @@ class BlackHole:
         for redshift in t:
             t.set_description("Calculating redshift {}".format(redshift))
             dirty_isoradials_copy = dirty_isoradials  # to mutate while finding the isoredshift
-            iz = self.calcIsoRedshift(redshift, dirty_isoradials_copy, cartesian=False)
+            iz = self.calc_isoredshift(redshift, dirty_isoradials_copy, cartesian=False)
             iz.improve(plot_inbetween=self.plot_params['plot_isoredshifts_inbetween'])
             isoredshifts.append(iz)
         self.isoredshifts = isoredshifts
         return isoredshifts
 
-    def plotIsoradials(self, direct_r: [], ghost_r: [], ax_lim=None, show=False):
+    def plot_isoradials(self, direct_r: [], ghost_r: [], ax_lim=None, show=False):
         """Given an array of radii for the direct image and/or ghost image, plots the corresponding
         isoradials.
         Calculates the isoradials according to self.root_params
         Plots the isoradials according to self.plot_params"""
 
-        def plotEllipse(__r, __ax, incl):
+        def plot_ellipse(__r, __ax, incl):
             ax_ = __ax
             a = np.linspace(-np.pi, np.pi, 2 * self.angular_properties['angular_precision'])
             ell = [ellipse(__r, a_, incl) for a_ in a]
@@ -178,7 +163,7 @@ class BlackHole:
             ax_.plot(x, y, color='red', zorder=-1)
             return ax_
 
-        _fig, _ax = self.__getFigure()
+        _fig, _ax = self.__get_figure()
         color_range = (-1, 1)
         progress_bar = tqdm(range(len(direct_r) + len(ghost_r)), position=0, leave=False)
 
@@ -215,7 +200,7 @@ class BlackHole:
         if self.plot_params['plot_ellipse']:  # plot ellipse
             progress_bar.write("Plotting ellipses")
             for radius in direct_r:
-                _ax = plotEllipse(radius, _ax, self.t)
+                _ax = plot_ellipse(radius, _ax, self.t)
 
         if self.plot_params['plot_core']:
             progress_bar.write("Plotting center of black hole")
@@ -233,39 +218,48 @@ class BlackHole:
             _fig.savefig(name, dpi=300, facecolor=self.plot_params['face_color'])
         return _fig, _ax
 
-    def writeFrames(self, direct_r=None, ghost_r=None, start=0, end=180, step_size=5,
-                    ax_lim=(-35, 35)):
+    def write_frames(self, direct_r=None, ghost_r=None, start=0, end=180, step_size=5,
+                     ax_lim=(-35, 35)):
         if ghost_r is None:
             ghost_r = [6, 10, 20, 30]
         if direct_r is None:
             direct_r = [6, 10, 20, 30]
         steps = np.linspace(start, end, 1 + (end - start) // step_size)
         for a in tqdm(steps, position=0, desc='Writing frames'):
-            self.setInclination(a)
+            self.set_inclination(a)
             bh.plot_params['title'] = 'inclination = {:03}°'.format(int(a))
-            fig_, ax_ = bh.plotIsoradials(direct_r, ghost_r, ax_lim=ax_lim)
+            fig_, ax_ = bh.plot_isoradials(direct_r, ghost_r, ax_lim=ax_lim)
             name = self.plot_params['title'].replace(' ', '_')
             name = name.replace('°', '')
             fig_.savefig('movie/' + name, dpi=300, facecolor=self.plot_params['face_color'])
             plt.close()  # to not destroy your RAM
 
-    def plotIsoRedshifts(self, minR=6, maxR=40, r_precision=15, redshifts=None):
+    def plot_isoredshifts(self, minR=6, maxR=60, r_precision=15, redshifts=None, ax_lim=(-35, 35)):
         if redshifts is None:
-            redshifts = [-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.]
-        isoredshifts = bh.calcIsoRedshifts(minR, maxR, r_precision=r_precision, redshifts=redshifts)
-        _fig, _ax = self.__getFigure()  # make new figure
+            redshifts = [-.2, -.15, 0., .15, .25, .5, .75, 1.]
+        isoredshifts = bh.calc_isoredshifts(minR, maxR, r_precision=r_precision, redshifts=redshifts)
+        _fig, _ax = self.__get_figure()  # make new figure
         color_map = plt.get_cmap('RdBu_r')
         norm = mpl.colors.Normalize(-1, 1)
 
         for irz in isoredshifts:
-            color = cm.ScalarMappable(norm=norm, cmap=color_map).to_rgba(irz.redshift)
-            plt.plot(irz.y, [-e for e in irz.x], color=color)  # TODO: hack to correctly orient plot
+            r_w_s, r_wo_s = irz.split_co_on_solutions()
+            if len(r_w_s.keys()):
+                color = cm.ScalarMappable(norm=norm, cmap=color_map).to_rgba(irz.redshift)
+                split_index = irz.split_co_on_jump()
+                if split_index is not None:
+                    plt.plot(irz.y[:split_index], [-e for e in irz.x][:split_index], color=color)
+                    plt.plot(irz.y[split_index+1:], [-e for e in irz.x][split_index+1:], color=color)
+                else:
+                    plt.plot(irz.y, [-e for e in irz.x], color=color)  # todo: why do i need to flip x
 
         # Shrink current axis by 20%
         # mx = 1.1 * max([max(isoredshift.redshift) for isoredshift in isoredshifts])
         # ax.set_xlim((-mx, mx))
         # ax.set_ylim((-mx, mx))
         plt.suptitle("Isoredshift lines for M={}".format(self.M))
+        _ax.set_ylim(ax_lim)
+        _ax.set_xlim(ax_lim)
         plt.show()
 
     def black_ring(self):
@@ -290,9 +284,9 @@ class BlackHole:
         :return:
         """
         if f is None:
-            f = f"points_incl={int(self.t*180/np.pi)}.csv"
+            f = f"Points/points_incl={int(self.t*180/np.pi)}.csv"
         if f2 is None:
-            f2 = f"points_secondary_incl={int(self.t*180/np.pi)}.csv"
+            f2 = f"Points/points_secondary_incl={int(self.t*180/np.pi)}.csv"
         df = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f)) else \
             pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'angle', 'z_factor', 'flux_o'])
         df2 = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f2)) else \
@@ -329,7 +323,7 @@ class BlackHole:
         df.to_csv(f)
         df2.to_csv(f2)
 
-    def plotPoints(self, f='points_incl=80.0.csv', f2='points_secondary_incl=80.0.csv', powerscale=.7, levels=100):
+    def plot_points(self, f='Points/points_incl=80.0.csv', f2='Points/points_secondary_incl=80.0.csv', powerscale=.7, levels=100):
         """
         Plot the points written out by samplePoints()
         :param f: filename of points (direct image)
@@ -373,7 +367,7 @@ class BlackHole:
             ir.X, ir.Y = polar_to_cartesian_lists(ir.radii_b, ir.angles, rotation=-np.pi / 2)
             return ir
 
-        _fig, _ax = self.__getFigure()
+        _fig, _ax = self.__get_figure()
         points1 = pd.read_csv(f)
         # points1 = addBlackRing(self, points1)
         points2 = pd.read_csv(f2)
@@ -395,7 +389,7 @@ class BlackHole:
         if levels is None:
             levels = [-.2, -.15, -.1, -0.05, 0., .05, .1, .15, .2, .25, .5, .75]
 
-        _fig, _ax = self.__getFigure()
+        _fig, _ax = self.__get_figure()
         points = pd.read_csv(f"points_incl={int(round(self.t*180/np.pi))}.csv")
         br = self.black_ring()
         color_map = plt.get_cmap('RdBu_r')
@@ -434,7 +428,7 @@ class Isoradial:
              'mirror': True}  # default values
         self.solver_params = _solver_params if _solver_params else \
             {'initial_guesses': 20,
-             'midpoint_iterations': 5,
+             'midpoint_iterations': 10,
              'plot_inbetween': False,
              'min_periastron': 3.1 * self.M}  # default values
         self.find_redshift_params = {
@@ -601,7 +595,7 @@ class Isoradial:
     def calc_between(self, ind):
         """
         Calculates the impact parameter and redshift factor at the
-        isoradial location between place ind and ind + 1
+        isoradial angle between place ind and ind + 1
 
         Args:
             ind: the index denoting the location at which the middle point should be calculated. The impact parameter,
@@ -646,20 +640,24 @@ class Isoradial:
             diff = [redshift + 1 - z_ for z_ in self.redshift_factors]  # calc new interval
             cross = np.where(np.diff(np.sign(diff)))[0]
             it += 1
+            # plt.plot(self.angles, [redshift + 1 - z_ for z_ in self.redshift_factors])
+            # plt.axvline(0)
+            # plt.show()
         return diff
 
-    def calc_redshift_location(self, redshift, midpoint_steps=10, cartesian=False):
+    def calc_redshift_location_on_ir(self, redshift, cartesian=False):
         """
-        Calculates which location on the isoradial has some redhsift value (not redhisft factor)
-        Doest this by means of a midpoint method, with :param midpoint_steps: steps. The isoradial is thus
-        calculated at locations closer and closer to where the desired redshift is.
-        It does not matter all that much how high the isoradial resolution is, since :param midpoint_steps: is
+        Calculates which location on the isoradial has some redshift value (not redshift factor)
+        Doest this by means of a midpoint method, with midpoint_steps steps (defined in parameters.ini).
+        The (b, alpha, z) coordinates of the isoradial are calculated closer and closer to the desired z.
+        It does not matter all that much how high the isoradial resolution is, since midpoint_steps is
         much more important to find an accurate location.
         """
 
         diff = [redshift + 1 - z_ for z_ in self.redshift_factors]
-        if self.find_redshift_params['force_redshift_solution']:
-            diff = self.force_intersection(redshift)
+        # if self.find_redshift_params['force_redshift_solution']:
+        #     pass  # TODO, force_intersection does not always seem to work
+        #     diff = self.force_intersection(redshift)
         initial_guess_indices = np.where(np.diff(np.sign(diff)))[0]
 
         angle_solutions = []
@@ -667,16 +665,16 @@ class Isoradial:
         if len(initial_guess_indices):
             for s in range(len(initial_guess_indices)):  # generally, two solutions exists on a single isoradial
                 new_ind = initial_guess_indices[s]  # initialize the initial guess.
-                for _ in range(midpoint_steps):
+                for _ in range(self.solver_params["midpoint_iterations"]):
                     self.calc_between(new_ind)  # insert more accurate solution
-                    diff = [redshift + 1 - z_ for z_ in self.redshift_factors[new_ind:new_ind + 3]]  # calc new interval
-                    start = np.where(np.diff(np.sign(diff)))[0]  # returns index where the sign changes
+                    diff_ = [redshift + 1 - z_ for z_ in self.redshift_factors[new_ind:new_ind + 3]]  # calc new interval
+                    start = np.where(np.diff(np.sign(diff_)))[0]  # returns index where the sign changes
                     new_ind += start[0]  # index of new redshift solution in refined isoradial
                 # append average values of final interval
                 angle_solutions.append(.5 * (self.angles[new_ind] + self.angles[new_ind + 1]))
                 b_solutions.append(.5 * (self.radii_b[new_ind] + self.radii_b[new_ind + 1]))
                 # update the initial guess indices, as the indexing has changed due to inserted solutions
-                initial_guess_indices = [e + midpoint_steps for e in initial_guess_indices]
+                initial_guess_indices = [e + self.solver_params["midpoint_iterations"] for e in initial_guess_indices]
             if cartesian:
                 return polar_to_cartesian_lists(b_solutions, angle_solutions)
         return angle_solutions, b_solutions
@@ -708,9 +706,10 @@ class Isoredshift:
         # TODO: currently same as Isoradial out of laziness, but these might require different solver params
         self.isoradial_solver_params = ir_solver_params if ir_solver_params else \
             {'initial_guesses': 20,
-             'midpoint_iterations': 5,
+             'midpoint_iterations': 10,
              'plot_inbetween': False,
-             'min_periastron': 3.1 * self.M}
+             'min_periastron': 3.1 * self.M,
+             'retry_angular_precision': 30}
 
         # Isoredshift attributes
         self.radii_w_coordinates_dict = coordinates if coordinates is not None else {}
@@ -718,7 +717,7 @@ class Isoredshift:
         self.ir_radii_w_co = [key for key, val in self.radii_w_coordinates_dict.items() if
                               len(val[0]) > 0]  # list of R that have solution
         self.co = self.angles, self.radii = self.__extract_co_from_solutions_dict(coordinates)
-        self.maxR = max(self.radii)
+        self.maxR = max(self.radii) if len(self.radii) else 0
         self.x, self.y = polar_to_cartesian_lists(self.radii, self.angles, rotation=0)
         self.order_coordinates()
 
@@ -745,9 +744,9 @@ class Isoredshift:
         self.coordinates_with_radii_dict[(angle, radius_b)] = radius_ir
         self.__update()
 
-    def __add_solutions(self, angles, radii_b, radius_ir):
-        for angle, radius_b in zip(angles, radii_b):
-            self.__add_solution(angle, radius_b, radius_ir)
+    def __add_solutions(self, angles, impact_parameters, radius_ir):
+        for angle, impact_parameter in zip(angles, impact_parameters):
+            self.__add_solution(angle, impact_parameter, radius_ir)
 
     def __init_co_to_radii_dict(self):
         to_return = {}
@@ -793,33 +792,19 @@ class Isoredshift:
     def calc_core_coordinates(self):
         """Calculates the coordinates of the redshift on the closest possible isoradial: 6*M (= 2*R_s)"""
         ir = Isoradial(6 * self.M, self.t, self.M, order=0, **self.isoradial_solver_params)
-        co = ir.calc_redshift_location(self.redshift)
+        co = ir.calc_redshift_location_on_ir(self.redshift)
         return co
-
-    def calc_coordinates(self, dirty_isoradials: [Isoradial], midpoint_steps):
-        """Calculates the isoredshift for a single redshift value"""
-        # TODO: is this deprecated? Aren't isoredshifts *initialised* from coordinates to begin with?
-        _a = []
-        _radius = []
-        t = tqdm(dirty_isoradials, position=1, leave=False)
-        for ir in dirty_isoradials:
-            t.set_description("Calculating isoredshift {} at R={:.2f}".format(self.redshift, ir.radius))
-            t.update()
-            a, radius = ir.calc_redshift_location(self.redshift, midpoint_steps, cartesian=False)
-            _a.append(a)
-            _radius.append(radius)
-        self.a = _a
-        self.radius = _radius
-        return _a, _radius
 
     def order_coordinates(self, plot_inbetween=False, plot_title=""):
         angles, radii = self.co
         co = [(a, r) for a, r in zip(angles, radii)]
         x, y = polar_to_cartesian_lists(radii, angles)
         cx, cy = np.mean(x, axis=0), np.mean(y, axis=0)
+        order_around = [.3*cx, .8*cy]
 
-        sorted_co = sorted(co, key=lambda polar_point: get_angle_around(
-            [cx, cy], polar_to_cartesian_single(polar_point[0], polar_point[1]))
+        sorted_co = sorted(
+            co, key=lambda polar_point: get_angle_around(
+                order_around, polar_to_cartesian_single(polar_point[0], polar_point[1]))
                            )
 
         if plot_inbetween:
@@ -829,24 +814,25 @@ class Isoredshift:
             for i, p in enumerate(sorted_co):
                 plt.plot(*polar_to_cartesian_single(*p), 'bo')
                 plt.text(x[i] * (1 + 0.01), y[i] * (1 + 0.01), i, fontsize=12)
-            plt.scatter(cx, cy)
-            plt.plot([0, cx], [0, cy])
+            plt.plot(*np.array([polar_to_cartesian_single(*p) for p in sorted_co]).T)
+            plt.scatter(*order_around)
+            plt.plot([0, order_around[0]], [0, order_around[1]])
             plt.title(plot_title)
             plt.show()
 
         self.co = self.angles, self.radii = [e[0] for e in sorted_co], [e[1] for e in sorted_co]
         self.x, self.y = polar_to_cartesian_lists(self.radii, self.angles, rotation=0)
 
-    def calc_between_angles(self, radius, begin_angle=0, end_angle=np.pi, angular_precision=2, mirror=False,
-                            plot_inbetween=False, title='', force_solution=False):
+    def calc_redshift_on_ir_between_angles(self, radius, begin_angle=0, end_angle=np.pi, angular_precision=3,
+                                           mirror=False,
+                                           plot_inbetween=False, title='', force_solution=False):
         ir = Isoradial(radius=radius, incl=self.t, bh_mass=self.M,
                        angular_properties={'start_angle': begin_angle,
                                            'end_angle': end_angle,
                                            'angular_precision': angular_precision,
                                            'mirror': mirror})
         ir.find_redshift_params['force_redshift_solution'] = force_solution
-        a, r = ir.calc_redshift_location(self.redshift, self.isoradial_solver_params['midpoint_iterations'],
-                                         cartesian=False)
+        a, r = ir.calc_redshift_location_on_ir(self.redshift, cartesian=False)
         if plot_inbetween:
             fig = plt.figure()
             ax = fig.add_subplot()
@@ -875,13 +861,13 @@ class Isoredshift:
             # NOT guaranteed to exist at r_inbetw (isoradial radius, not impact parameter):
             #   1. If coordinates aren't split on a jump (either on the black hole or if they never meet at inf)
             #   2. If we're trying to find one at a tip -> should be covered by other methods though.
-            a, r = self.calc_between_angles(r_inbetw, begin_angle - .1, end_angle + .1, plot_inbetween=False,
-                                            title='between p{} and p{}'.format(i, i + 1), force_solution=True)
+            a, r = self.calc_redshift_on_ir_between_angles(r_inbetw, begin_angle - .1, end_angle + .1, plot_inbetween=False,
+                                                           title='between p{} and p{}'.format(i, i + 1), force_solution=True)
             i += 1
             if len(a):
                 self.__add_solutions(a, r, r_inbetw)
 
-    def improve_closest_isoradial_wo_solutions(self, angular_precision=3):
+    def recalc_redshift_on_closest_isoradial_wo_z(self):
         """
         Recalculates the first (closest) isoradial that did not find a solution with more angular precision.
         Isoradial is recalculated withing the angular interval of the two last (furthest) solutions.
@@ -900,38 +886,43 @@ class Isoredshift:
         if end_angle - begin_angle > np.pi:  # in case the angle is around 0 and 2pi
             begin_angle, end_angle = end_angle, begin_angle  # this works, apparently
         # calculate solutions and add them to the class attributes if they exist
-        a, r = self.calc_between_angles(closest_r_wo_s, begin_angle, end_angle, angular_precision=angular_precision,
-                                        mirror=True)
+        a, b = self.calc_redshift_on_ir_between_angles(closest_r_wo_s, begin_angle, end_angle,
+                                                       angular_precision=
+                                                       self.isoradial_solver_params['retry_angular_precision'],
+                                                       mirror=False)
         if len(a):
-            self.__add_solutions(a, r, closest_r_wo_s)
-        return a, r
+            self.__add_solutions(a, b, closest_r_wo_s)
+        return a, b
 
-    def retry_ir_wo_solutions(self, angular_precision=5, plot_inbetween=False):
+    def recalc_isoradials_wo_redshift_solutions(self, plot_inbetween=True):
         r_w_so, r_wo_s = self.split_co_on_solutions()
-        if len(r_wo_s.keys()) > 0:
-            a, r = self.improve_closest_isoradial_wo_solutions()  # re-calculate isoradials where no solutions were found
+        if len(r_wo_s.keys()) > 0 and len(r_w_so) > 0:
+            a, r = self.recalc_redshift_on_closest_isoradial_wo_z()  # re-calculate isoradials where no solutions were found
             self.order_coordinates(plot_inbetween=plot_inbetween, plot_title="improving tip angular")
+            r_w_so, r_wo_s = self.split_co_on_solutions()
             while len(a) > 0 and len(r_wo_s.keys()) > 0:
-                a, r = self.improve_closest_isoradial_wo_solutions()  # re-calculate isoradials where no solutions were found
+                a, r = self.recalc_redshift_on_closest_isoradial_wo_z()  # re-calculate isoradials where no solutions were found
                 r_w_s, r_wo_s = self.split_co_on_solutions()
                 self.order_coordinates(plot_inbetween=plot_inbetween, plot_title="improving tip angular")
 
-    def calc_closest_ir_wo_solutions_between(self, angular_precision=5, angular_margin=.6):
+    def calc_ir_before_closest_ir_wo_z(self, angular_margin=.3):
         """
         Given two isoradials (one with solutions and one without), calculates a new isoradial inbetween the two.
-        Either a solution is found, or the location of the tip of the isoredshift is more closed in>
+        Either a solution is found, or the location of the tip of the isoredshift is more closed in.
         """
         r_w_s, r_wo_s = self.split_co_on_solutions()
         angle_interval, last_radii = self.radii_w_coordinates_dict[max(r_w_s.keys())]  # one isoradial: two angles/radii
-        if len(r_wo_s.keys()) > 0:  # assert there are radii considered without solutions
+        if len(r_wo_s.keys()) > 0 and len(r_w_s) > 0:  # assert there are radii considered without solutions
             first_r_wo_s = min(r_wo_s.keys())
             last_r_w_s = max(r_w_s.keys())
             inbetween_r = .5 * (first_r_wo_s + last_r_w_s)
             begin_angle, end_angle = angle_interval
             if end_angle - begin_angle > np.pi:  # in case the angle is around 0 and 2pi
                 begin_angle, end_angle = end_angle, begin_angle  # this works, apparently
-            a, r = self.calc_between_angles(inbetween_r, begin_angle - angular_margin, end_angle + angular_margin,
-                                            angular_precision=angular_precision, mirror=False)
+            a, r = self.calc_redshift_on_ir_between_angles(inbetween_r, begin_angle - angular_margin, end_angle + angular_margin,
+                                                           angular_precision=
+                                                           self.isoradial_solver_params['retry_angular_precision'],
+                                                           mirror=False)
             if len(a):
                 self.__add_solutions(a, r, inbetween_r)
             else:
@@ -940,56 +931,57 @@ class Isoredshift:
     def improve_tip(self, iterations=6, plot_inbetween=False):
         r_w_so, r_wo_s = self.split_co_on_solutions()
         if len(r_wo_s.keys()) > 0:
-            for _ in range(iterations):
-                self.calc_closest_ir_wo_solutions_between(angular_precision=5)
-                self.order_coordinates(plot_inbetween=plot_inbetween, plot_title="Improving tip iteratively")
+            for it in range(iterations):
+                self.calc_ir_before_closest_ir_wo_z()  # precision must be high enough
+                self.order_coordinates(plot_inbetween=plot_inbetween, plot_title=f"Improving tip iteration {it}")
 
-    def improve(self, times_inbetween=2, times_tip=6,
-                plot_inbetween=False):  # TODO: figure out good number for @param times
-        # Improve the initial dirty isoradials
-        self.retry_ir_wo_solutions(plot_inbetween=False)
-        self.improve_tip(iterations=times_tip, plot_inbetween=plot_inbetween)
-        for n in range(times_inbetween):
-            # TODO: why doesn't he calculate at the tip region?
-            # TODO: maybe due to the fact that the angular interval is too strict? let's see what angular margin does
-            self.improve_between_all_solutions_once()  # TODO is this the correct value
-            self.order_coordinates(plot_inbetween=plot_inbetween, plot_title="calculating inbetween")
-
-    def splitCoOnJump(self):
+    def improve(self, times_inbetween=3, times_tip=10,
+                plot_inbetween=False):
         """
-        Re-adjusts the order of the coordinate dictionary so that they are:
-        1. sorted
-        2. the first element is at the photosphere, and the last element is back at the photosphere
-
-        This function assumes that, if no solutions for a isoredshift are found for some radius, it is
-        because it does not exist (and not because the solver hasn't found it yet).
-        This is generally True after having called :func:improve().
-        :return:
+        Given an isoredshift calculated from just a couple coordinates, improves the solutions by:
+        1. recalculating isoradials that did not contain the wanted redshift with more precision
+        2. calculating isoradials inbetween the largest isoradial that had the wanted redshift and
+        the closest that did not.
         """
+        r_w_s, r_wo_s = self.split_co_on_solutions()
+        if len(r_w_s):  # at least one solution is found
+            self.recalc_isoradials_wo_redshift_solutions(plot_inbetween=False)
+            self.improve_tip(iterations=times_tip, plot_inbetween=plot_inbetween)
+            for n in range(times_inbetween):
+                self.improve_between_all_solutions_once()
+                self.order_coordinates(plot_inbetween=plot_inbetween, plot_title="calculating inbetween")
+
+    def split_co_on_jump(self, threshold=2):
+        """
+        Returns the index where the difference in isoredshift coordinate values is significantly bigger than the median
+        distance. This is used to avoid the plotter to connect two points that should not be connected.
+        A jump between two coordinates co1 and co2 is when the isoredshift line does not connect within
+        the considered frame, but either does not connect (purely radial isoredshift lines), or connects very far
+        from the black hole
+        """
+        def dist(__x, __y):
+            x1, x2 = __x
+            y1, y2 = __y
+            d = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            return d
 
         self.order_coordinates()
         self.__update()
-        split = 0
-        dist = []
-        for i in range(len(self.co) - 1):
-            p1, p2 = zip(self.co[i], self.co[i + 1])
-            angles, radii = np.asarray(p1, p2).T
-            print("angles: ", angles)
-            p1_c, p2_c = polar_to_cartesian_lists(radii, angles)
-            print("cartesian: {}".format(p1_c))
-            print("cartesian 2: {}".format(p2_c))
-            center = np.mean([p1, p2], axis=0)
-            print("center: ", center)
-            if center < 6 * self.M:
-                split = i
-
-        self.co = self.co[split:] + self.co[:split]
-        print("coordinates: {}".format(self.co))
+        x, y = polar_to_cartesian_lists(self.radii, self.angles)
+        _dist = [dist((x1, x2), (y1, y2)) for x1, x2, y1, y2 in zip(x[:-1], x[1:], y[:-1], y[1:])]
+        mx2, mx = sorted(_dist)[-2:]
+        if mx > threshold * mx2:
+            split_ind = np.where(_dist == mx)[0][0]
+            if not np.diff(np.sign(self.x[split_ind:split_ind+2])) > 0:
+                # not really a jump, just an artefact of varying point density along the isoredshift line
+                split_ind = None
+        else:
+            split_ind = None
+        return split_ind
 
     def plot(self, ax, norm, color_map):
         color = cm.ScalarMappable(norm=norm, cmap=color_map).to_rgba(self.redshift)
         plt.plot(self.y, [-e for e in self.x], color=color)  # TODO: hack to correctly orient plot
-        self.improve_closest_isoradial_wo_solutions()
         plt.plot(self.y, [-e for e in self.x], color=color)  # TODO: hack to correctly orient plot
         tries = 0
         while len(self.ir_radii_w_co) < 10 and tries < 10:
@@ -1025,8 +1017,6 @@ def get_angle_around(p1, p2):
     """
     Calculates the angle of p2 around p1
 
-    :param m_point: the middle of the two redshift points on the innermost isoradial.
-    :param split_zero_index: if p[split_zero_index] < 0, return 2pi - angle
     :param p1: coordinate 1 in format [x, y]
     :param p2:  coordinate 2 in format [x, y]
     :return: angle in radians
@@ -1035,41 +1025,28 @@ def get_angle_around(p1, p2):
 
     p2_ = np.subtract(p2, p1)
     angle_center, _ = cartesian_to_polar(cx, cy)
-    # rotate p2_ counter clockwise until the vector to the isoradial center is aligned with negative y-axis
-    theta = np.pi - angle_center
+    # rotate p2_ counter-clockwise until the vector to the isoradial center is aligned with negative y-axis
+    theta = np.pi - angle_center if angle_center > np.pi else angle_center
     rot = np.array([[np.cos(theta), -np.sin(theta)],
                     [np.sin(theta), np.cos(theta)]])
     p2_ = np.dot(rot, p2_)
     angle_target, _ = cartesian_to_polar(p2[0], p2[1])
-    angle_target_around_center, R_target_around_center = cartesian_to_polar(p2_[0], p2_[1])
-    if angle_target_around_center < 0:
-        angle_target_around_center = 2 * np.pi + angle_target_around_center
-    if angle_target_around_center > np.pi and p2[1] < 0 and cx > 0:
-        # dirty check to see if angle is in between the angle defined by origin - isoradial center - p2
-        # cause then the angle will be too big
-        angle_target_around_center -= 2 * np.pi
+    angle_target_around_center, _ = cartesian_to_polar(p2_[0], p2_[1])
 
     return angle_target_around_center
 
 
 if __name__ == '__main__':
     M = 1.
-    for i in range(36):
-        bh = BlackHole(inclination=5*i, mass=M)
-        # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
-        bh.solver_params = {'initial_guesses': 12,
-                            'midpoint_iterations': 11,  # 5 is fine for direct image. Up until 10 for ghost image of large R
-                            'plot_inbetween': False,
-                            'min_periastron': 3.01,
-                            'elliptic_integral_interval': (0, 2 * np.pi),
-                            # which section should be calculated with an elliptic integral
-                            'use_ellipse': True}
-        bh.plot_params['plot_core'] = False
-        bh.plot_params['plot_isoredshifts_inbetween'] = False
-        bh.angular_properties['angular_precision'] = 100
-        # bh.sample_points(N=10000, maxR=60)
-        # bh.plotIsoRedshifts(redshifts=[-.15], r_precision=20)
-        bh.plot_isoredshifts_from_points(ax_lim=(-35, 35))
+    bh = BlackHole(inclination=90, mass=M)
+    # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
+
+    # bh.plot_params['plot_core'] = False
+    # bh.plot_params['plot_isoredshifts_inbetween'] = True
+    bh.angular_properties['angular_precision'] = 50
+    # bh.sample_points(N=10000, maxR=60)
+    bh.plot_isoredshifts(r_precision=10)
+    # bh.plot_isoredshifts_from_points(ax_lim=(-35, 35))
     # TODO: check why Isoredshift.calcInbetween doesn't always find a solution
     # TODO: split on jump
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))

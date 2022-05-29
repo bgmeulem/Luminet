@@ -166,7 +166,7 @@ def write_frames_eq13(radius: float, solver_params: Dict, incl: float = 10., M: 
             return eq13(P, radius_, a_, M_, incl_)  # solve this equation for P
 
         s = calc_impact_parameter(radius, incl, a, M, **solver_params, use_ellipse=False)
-        x = np.linspace(solver_params["minP"], 1.01 * radius, 100)
+        x = np.linspace(solver_params["minP"]*M, 1.01 * radius, 100)
         x_range = filter_periastrons(x, M)
         y = [eq13_P(x_).real for x_ in x_range]
         x = [calc_b_from_periastron(p, M) for p in filter_periastrons(x, M)]
@@ -340,5 +340,5 @@ if __name__ == '__main__':
     solver_params = {'initial_guesses': 10,
                      'midpoint_iterations': 10,
                      'plot_inbetween': False,
-                     'minP': 3.1 * M}
+                     'minP': 3.01 * M}
     # writeFramesEq13(5, solver_params=solver_params)
