@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.special import ellipj, ellipk, ellipkinc
 from typing import Dict
 from tqdm import tqdm
+
 # import mpmath
 
 plt.style.use('fivethirtyeight')
@@ -91,7 +92,7 @@ def cos_gamma(_a: float, incl: float, tol=10e-5) -> float:
     """
     if abs(incl) < tol:
         return 0
-    return np.cos(_a) / np.sqrt(np.cos(_a) ** 2 + 1/(np.tan(incl) ** 2))  # real
+    return np.cos(_a) / np.sqrt(np.cos(_a) ** 2 + 1 / (np.tan(incl) ** 2))  # real
 
 
 def cos_alpha(phi: float, incl: float) -> float:
@@ -113,7 +114,8 @@ def filter_periastrons(periastron: [], bh_mass: float, tol: float = 10e-3) -> []
     return [e for e in periastron if abs(e - 2. * bh_mass) > tol]
 
 
-def eq13(periastron: float, _r: float, _a: float, bh_mass: float, incl: float, n: int = 0, tol=10e-6) -> float:
+def eq13(periastron: float, ir_radius: float, ir_angle: float, bh_mass: float, incl: float, n: int = 0,
+         tol=10e-6) -> float:
     """
     Relation between radius (where photon was emitted in accretion disk), a and P.
     P can be converted to b, yielding the polar coordinates (b, a) on the photographic plate
@@ -124,7 +126,7 @@ def eq13(periastron: float, _r: float, _a: float, bh_mass: float, incl: float, n
     q = calc_q(periastron, bh_mass)
     m_ = k2(periastron, bh_mass)  # modulus of the elliptic integrals. mpmath takes m = k² as argument.
     ell_inf = ellipkinc(z_inf, m_)  # Elliptic integral F(zeta_inf, k)
-    g = np.arccos(cos_gamma(_a, incl))  # real
+    g = np.arccos(cos_gamma(ir_angle, incl))
 
     # Calculate the argument of sn (mod is m = k², same as the original elliptic integral)
     # WARNING: paper has an error here: \sqrt(P / Q) should be in denominator, not numerator
@@ -133,134 +135,101 @@ def eq13(periastron: float, _r: float, _a: float, bh_mass: float, incl: float, n
         ell_k = ellipk(m_)  # calculate complete elliptic integral of mod m = k²
         ellips_arg = (g - 2. * n * np.pi) / (2. * np.sqrt(periastron / q)) - ell_inf + 2. * ell_k
     else:  # direct image
-        ellips_arg = g / (2. * np.sqrt(periastron / q)) + ell_inf  # complex
+        ellips_arg = g / (2. * np.sqrt(periastron / q)) + ell_inf
 
     # sn is an Jacobi elliptic function: elliptic sine. ellipfun() takes 'sn'
     # as argument to specify "elliptic sine" and modulus m=k²
-    # sn = mpmath.ellipfun('sn', ellips_arg, m=m_)
-    # TODO: let's test if scipy is quicker than mpmath - uses Cephes library written in C
     sn, cn, dn, ph = ellipj(ellips_arg, m_)
     sn2 = sn * sn
-    # sn2 = float(sn2.real)
     term1 = -(q - periastron + 2. * bh_mass) / (4. * bh_mass * periastron)
     term2 = ((q - periastron + 6. * bh_mass) / (4. * bh_mass * periastron)) * sn2
 
-    return 1. - _r * (term1 + term2)  # solve this for zero
+    return 1. - ir_radius * (term1 + term2)  # solve this for zero
 
 
-def write_frames_eq13(radius: float, solver_params: Dict, incl: float = 10., M: float = 1.,
-                      angular_precision=100) -> None:
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    # ax.get_xaxis().set_visible(False)
-    # ax.get_yaxis().set_visible(False)
+def midpoint_method(func, args: Dict, __x, __y, __ind):
+    new_x = __x
+    new_y = __y
 
-    fig.set_size_inches([5, 5])
-    ax.set_xlabel('P')
-    ax.set_ylabel('eq13(P, r, a)')
+    x_ = [new_x[__ind], new_x[__ind + 1]]  # interval of P values
+    inbetween_x = np.mean(x_)  # new periastron value, closer to solution yielding 0 for ea13
+    new_x.insert(__ind + 1, inbetween_x)  # insert middle P value to calculate
 
-    for n in tqdm(range(angular_precision)):
-        a = np.pi * n / angular_precision
+    y_ = [new_y[__ind], new_y[__ind + 1]]  # results of eq13 given the P values
+    # calculate the P value inbetween
+    inbetween_solution = func(periastron=inbetween_x, **args)
+    new_y.insert(__ind + 1, inbetween_solution)
+    y_.insert(1, inbetween_solution)
+    ind_of_sign_change_ = np.where(np.diff(np.sign(y_)))[0]
+    new_ind = __ind + ind_of_sign_change_[0]
 
-        def eq13_P(P, radius_=radius, a_=a, M_=M, incl_=incl):
-            return eq13(P, radius_, a_, M_, incl_)  # solve this equation for P
+    return new_x, new_y, new_ind  # return x and y refined in relevant regions, as well as new index of sign change
 
-        s = calc_impact_parameter(radius, incl, a, M, **solver_params, use_ellipse=False)
-        x = np.linspace(solver_params["minP"]*M, 1.01 * radius, 100)
-        x_range = filter_periastrons(x, M)
-        y = [eq13_P(x_).real for x_ in x_range]
-        x = [calc_b_from_periastron(p, M) for p in filter_periastrons(x, M)]
 
-        ax.clear()
-        ax.set_xlabel('P')
-        ax.set_ylabel('eq13(P, r, a)')
-        if s is not None:
-            ax.scatter(s.real, 0, color='red', zorder=10)
-        ax.plot(x, y)
-        plt.axhline(0, color='black')
-        plt.title("Equation 13, r = {}\na = {}".format(radius, round(a, 5)))
-        fig.savefig('movie/eq13/frame{:03d}.png'.format(n))
+def improve_solutions_midpoint(func, args, x, y, index_of_sign_change, iterations) -> float:
+    """
+    To increase precision.
+    Recalculate each solution in :arg:`solutions` using the provided :arg:`func`.
+    Achieves an improved solution be re-evaluating the provided :arg:`func` at a new
+    :arg:`x`, inbetween two pre-existing values for :arg:`x` where the sign of :arg:`y` changes.
+    Does this :arg:`iterations` times
+    """
+    index_of_sign_change_ = index_of_sign_change
+    new_x = x
+    new_y = y
+    new_ind = index_of_sign_change_  # location in X and Y where eq13(P=X[ind]) equals Y=0
+    for iteration in range(iterations):
+        new_x, new_y, new_ind = midpoint_method(func=func, args=args, __x=new_x, __y=new_y, __ind=new_ind)
+    updated_periastron = new_x[new_ind]
+    return updated_periastron
 
 
 def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, plot_inbetween=False,
-                          n=0, min_periastron=1, initial_guesses=20, elliptic_integral_interval=None,
-                          use_ellipse=True) -> float:
-    """Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value"""
+                          n=0, min_periastron=1, initial_guesses=20, use_ellipse=True) -> float:
+    """
+    Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value
+    This periastron can be converted to an impact parameter b, yielding the observer frame coordinates (b, alpha).
+    Does this by generating range of periastron values, evaluating eq13 on this range and using a midpoint method
+    to iteratively improve which periastron value solves equation 13.
+    The considered initial periastron range must not be lower than min_periastron (i.e. the photon sphere),
+    otherwise non-physical solutions will be found. These are interesting in their own right (the equation yields
+    complex solutions within radii smaller than the photon sphere!), but are for now outside the scope of this project.
+    Must be large enough to include solution, hence the dependency on the radius (the bigger the radius of the
+    accretion disk where you want to find a solution, the bigger the periastron solution is, generally)
+    """
 
-    def eq13_P(__P, __r, __alpha, __bh_mass, __incl, __n):
-        s = eq13(__P, _r=__r, _a=__alpha, bh_mass=__bh_mass, incl=__incl, n=__n)  # solve this equation for P
-        return s
-
-    def midpoint_method_periastron(__x, __y, __ind, __radius, __angle, __bh_mass, __inclination, __n):
-        new_x = __x
-        new_y = __y
-
-        x_ = [new_x[__ind], new_x[__ind + 1]]  # interval of P values
-        inbetween_P = np.mean(x_)
-        new_x.insert(__ind + 1, inbetween_P)  # insert middle P value to calculate
-
-        y_ = [new_y[__ind], new_y[__ind + 1]]  # results of eq13 given the P values
-        # calculate the P value inbetween
-        inbetween_solution = eq13_P(__P=inbetween_P, __r=__radius, __alpha=__angle, __bh_mass=__bh_mass, __incl=__inclination,
-                                    __n=__n)
-        new_y.insert(__ind + 1, inbetween_solution)
-        y_.insert(1, inbetween_solution)
-        ind_of_sign_change_ = np.where(np.diff(np.sign(y_)))[0]  # TODO: how to deal with complex
-        new_ind = __ind + ind_of_sign_change_[0]
-
-        return new_x, new_y, new_ind  # return x and y refined in relevant regions, as well as new index of sign change
-
-    def improve_periastron_solution(periastron, x, y, indices_of_sign_change, iterations, radius, angle, bh_mass, inclination, n_):
-        """To increase precision.
-        Searches again for a solution inbetween the interval where the sign changes
-        Does this <iterations> times"""
-        updated_periastron = periastron
-        indices_of_sign_change_ = indices_of_sign_change
-        new_x = x
-        new_y = y
-        for i in range(len(indices_of_sign_change_)):  # update each solution of P
-            new_ind = indices_of_sign_change_[i]  # location in X and Y where eq13(P=X[ind]) equals Y=0
-            for iteration in range(iterations):
-                new_x, new_y, new_ind = midpoint_method_periastron(new_x, new_y, new_ind, radius, angle, bh_mass, inclination, n_)
-            updated_periastron[i] = new_x[new_ind]
-            indices_of_sign_change_ = [e + iterations for e in indices_of_sign_change_]
-        return updated_periastron
-
-    def get_plot(X, Y, solutions, radius=_r):
+    def get_plot(X, Y, solution, radius=_r):
         fig = plt.figure()
         plt.title("Eq13(P)\nr={}, a={}".format(radius, round(_alpha, 5)))
         plt.xlabel('P')
         plt.ylabel('Eq13(P)')
         plt.axhline(0, color='black')
         plt.plot(X, Y)
-        for periastron \
-                in solutions:
-            plt.scatter(periastron, 0, color='red')
+        plt.scatter(solution, 0, color='red')
         return plt
 
-    if elliptic_integral_interval is None:
-        elliptic_integral_interval = (70 * np.pi / 180,
-                                      2 * np.pi - 70 * np.pi / 180)
+    # TODO: an x_range between [min - 2.*R] seems to suffice for isoradials < 30M, but this is guesstimated
+    periastron_range = list(np.linspace(min_periastron, 2. * _r, initial_guesses))
+    y_ = [eq13(P_value, _r, _alpha, bh_mass, incl, n) for P_value in periastron_range]  # values of eq13
+    ind = np.where(np.diff(np.sign(y_)))[0]  # only one solution should exist
+    periastron_solution = periastron_range[ind[0]] if len(ind) else None  # initial guesses for P
 
-    # TODO: an x_range until 1.1*R seems to suffice for isoradials < 30M, but this is guesstimated
-    x_ = list(np.linspace(min_periastron, 2. * _r, initial_guesses))  # range of P values without P == 2*M
-    x_ = filter_periastrons(x_, bh_mass)
-    y_ = [eq13_P(P_value, _r, _alpha, bh_mass, incl, n) for P_value in x_]  # values of eq13
-    y_ = [y.real if y.imag < 10e-6 else y for y in y_]  # drop tiny imaginary parts
+    if periastron_solution is not None:  # elliptic integral found a periastron solving equation 13
+        args_eq13 = {"ir_radius": _r, "ir_angle": _alpha, "bh_mass": bh_mass, "incl": incl, "n": n}
+        periastron_solution = \
+            improve_solutions_midpoint(func=eq13, args=args_eq13,
+                                       x=periastron_range, y=y_, index_of_sign_change=ind[0],
+                                       iterations=midpoint_iterations)  # get better P values
 
-    ind = np.where(np.diff(np.sign(y_)))[0]
-    _P = [x_[i] for i in ind]  # initial guesses for P
-
-    # If image is ghost image, or direct image with lots of curvature: calculate with elliptic integrals
-    if len(_P):
-        _P = improve_periastron_solution([P.real for P in _P], x_, y_, ind, midpoint_iterations, _r, _alpha, bh_mass, incl, n)  # get better P values
         if plot_inbetween:
-            get_plot(x_, y_, _P).show()
-        # TODO: how to correctly pick the right solution (there are generally 3 solutions, of which 2 complex)
-        _P = max(_P)
-        return float(calc_b_from_periastron(_P, bh_mass).real)
-    elif use_ellipse:  # Front side of disk: calculate impact parameter with the ellipse formula
-        return float(ellipse(_r, _alpha, incl))
+            get_plot(periastron_range, y_, periastron_solution).show()
+        return float(calc_b_from_periastron(periastron_solution, bh_mass).real)
+    elif use_ellipse:
+        # No periastron solution was found: assume this is because it's the front side of the disk
+        # This happens for low values of alpha
+        # But it's the front side of disk: calculate impact parameter with the ellipse formula
+        # instead of elliptic integrals (the difference between the two goes to 0 as alpha approaches 0 or 2pi)
+        return ellipse(_r, _alpha, incl)
     else:
         # Should never happen
         # why was no P found?
@@ -268,7 +237,6 @@ def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, pl
         # plt.plot(x_, y_)
         # plt.show()
         raise ValueError(f"No solution was found for the periastron at (r, a) = ({_r}, {_alpha}) and incl={incl}")
-        # return None  # TODO: implement
 
 
 def phi_inf(periastron, M):
@@ -283,7 +251,7 @@ def mu(periastron, bh_mass):
     return float(2 * phi_inf(periastron, bh_mass) - np.pi)
 
 
-def ellipse(r, a, incl):
+def ellipse(r, a, incl) -> float:
     """Equation of an ellipse, reusing the definition of cos_gamma.
     This equation can be used for calculations in the Newtonian limit (large P = b, small a)
     or to visualize the equatorial plane."""
@@ -303,36 +271,23 @@ def flux_intrinsic(r, acc, bh_mass):
 
 def flux_observed(r, acc, bh_mass, redshift_factor):
     flux_intr = flux_intrinsic(r, acc, bh_mass)
-    return flux_intr / redshift_factor**4
+    return flux_intr / redshift_factor ** 4
 
 
-def redshift_factor(radius, angle, incl, M, b_):
-    """Calculate the redshift factor (1 + z), ignoring cosmological redshift."""
-    # TODO: the paper makes no sense here
-    gff = (radius * np.sin(incl) * np.sin(angle)) ** 2
-    gtt = - (1 - (2. * M) / radius)
-    z_factor = (1. + np.sqrt(M / (radius ** 3)) * b_ * np.sin(incl) * np.sin(angle)) * \
-               (1 - 3. * M / radius) ** -.5
+def redshift_factor(radius, angle, incl, bh_mass, b_):
+    """
+    Calculate the gravitational redshift factor (1 + z), ignoring cosmological redshift.
+    """
+    # WARNING: the paper is absolutely incomprehensible here. Equation 18 for the redshift completely
+    # leaves out important factors. It should be:
+    # 1 + z = (1 - Ω*b*cos(η)) * (-g_tt -2Ω*g_tϕ - Ω²*g_ϕϕ)^(-1/2)
+    # The expressions for the metric components, Ω and the final result of Equation 19 are correct though
+    # TODO perhaps implement other metrics? e.g. Kerr, where g_tϕ != 0
+    # gff = (radius * np.sin(incl) * np.sin(angle)) ** 2
+    # gtt = - (1 - (2. * M) / radius)
+    z_factor = (1. + np.sqrt(bh_mass / (radius ** 3)) * b_ * np.sin(incl) * np.sin(angle)) * \
+               (1 - 3. * bh_mass / radius) ** -.5
     return z_factor
-
-
-def find_a(b_, z, incl, M, r_):
-    """Given a certain redshift value z (NOT redshift factor 1+z) and radius b on the observer plane, find the angle
-    on the observer plane. Include contributions from the disk at radii r."""
-    radius = np.linspace(3 * M, 100 * M, len(b_)) if not r_ else r_
-
-    sin_angle = ((1. + z) * np.sqrt(1. - 3. * M / radius) - 1) / ((M / radius ** 3) ** .5 * b_ * np.sin(incl))
-    return np.arcsin(sin_angle)
-
-
-def getPFromB(b, M):
-    # TODO: please don't ever use this
-    num1 = 3**(2/3)*b**2
-    num2 = 3**(1/3) * (np.sqrt(81*b**4 * M**2 - 3*b**6) - 9 * b**2 * M)
-    denom3 = np.sqrt(81*b**4 * M**2 - 3*b**6) - 9*b**2 * M
-    denom = 3*denom3**(1/3)
-    s = (num1 + num2) / denom
-    return s
 
 
 if __name__ == '__main__':

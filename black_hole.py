@@ -112,7 +112,7 @@ class BlackHole:
         at low precision
         """
         solutions = OrderedDict()
-        _maxR = None
+        _max_radius = None
         for ir in _dirty_isoradials:
             # Use the same solver params from the black hole to calculate the redshift location on the isoradial
             a, r = ir.calc_redshift_location_on_ir(_redshift, cartesian=cartesian)
@@ -121,14 +121,14 @@ class BlackHole:
         return Isoredshift(inclination=self.t, redshift=_redshift, bh_mass=self.M, ir_solver_params=self.solver_params,
                            coordinates=solutions)
 
-    def calc_isoredshifts(self, minR=6, maxR=60, r_precision=10, redshifts=None):
+    def calc_isoredshifts(self, min_radius=6, max_radius=60, r_precision=10, redshifts=None):
         if redshifts is None:
             redshifts = [-.15, 0., .1, .20, .5]
 
-        def getDirtyIsoradials(_minR, _maxR, _r_precision, angular_precision=10):
+        def get_dirty_isoradials(_min_radius, _max_radius, _r_precision, angular_precision=10):
             # an array of quick and dirty isoradials for the initial guesses of redshifts
             isoradials = []  # for initial guesses
-            for radius in np.linspace(_minR, _maxR, _r_precision):  # calculate the initial guesses
+            for radius in np.linspace(_min_radius, _max_radius, _r_precision):  # calculate the initial guesses
                 isoradial = Isoradial(radius, self.t, self.M,
                                       angular_properties={'start_angle': 0,
                                                           'end_angle': np.pi,
@@ -137,13 +137,15 @@ class BlackHole:
                 isoradials.append(isoradial)
             return isoradials
 
-        dirty_isoradials = getDirtyIsoradials(minR, maxR, r_precision)
+        dirty_isoradials = get_dirty_isoradials(min_radius, max_radius, r_precision)
         isoredshifts = []
         t = tqdm(redshifts, desc="Calculating redshift", position=0)
         for redshift in t:
             t.set_description("Calculating redshift {}".format(redshift))
             dirty_isoradials_copy = dirty_isoradials  # to mutate while finding the isoredshift
+            # spawn an isoredshift instance and calc coordinates based on dirty isoradials
             iz = self.calc_isoredshift(redshift, dirty_isoradials_copy, cartesian=False)
+            # iteratively improve coordinates and closing tip of isoredshift
             iz.improve(plot_inbetween=self.plot_params['plot_isoredshifts_inbetween'])
             isoredshifts.append(iz)
         self.isoredshifts = isoredshifts
@@ -234,10 +236,10 @@ class BlackHole:
             fig_.savefig('movie/' + name, dpi=300, facecolor=self.plot_params['face_color'])
             plt.close()  # to not destroy your RAM
 
-    def plot_isoredshifts(self, minR=6, maxR=60, r_precision=15, redshifts=None, ax_lim=(-35, 35)):
+    def plot_isoredshifts(self, min_radius=6, max_radius=60, r_precision=15, redshifts=None, ax_lim=(-35, 35)):
         if redshifts is None:
             redshifts = [-.2, -.15, 0., .15, .25, .5, .75, 1.]
-        isoredshifts = bh.calc_isoredshifts(minR, maxR, r_precision=r_precision, redshifts=redshifts)
+        isoredshifts = bh.calc_isoredshifts(min_radius, max_radius, r_precision=r_precision, redshifts=redshifts)
         _fig, _ax = self.__get_figure()  # make new figure
         color_map = plt.get_cmap('RdBu_r')
         norm = mpl.colors.Normalize(-1, 1)
@@ -269,16 +271,17 @@ class BlackHole:
         ir.X, ir.Y = polar_to_cartesian_lists(ir.radii_b, ir.angles, rotation=-np.pi / 2)
         return ir
 
-    def sample_points(self, minR=None, maxR=None, N=1000, f=None, f2=None):
+    def sample_points(self, min_radius=None, max_radius=None, n_points=1000, f=None, f2=None):
         """
+        # TODO: sample separately for direct and ghost image?
         Samples points on the accretion disk. This sampling is not done uniformly, but a bias is added towards the
         center of the accretion disk, as the observed flux is exponentially bigger here and this needs the most
         precision.
         Both the direct and ghost image for each point is calculated. It's coordinates (polar and cartesian),
         redshift and
-        :param minR:
-        :param maxR:
-        :param N: Amount of points to sample. 10k takes about 6 minutes and gives satisfactory precision for the most part.
+        :param min_radius:
+        :param max_radius:
+        :param n_points: Amount of points to sample. 10k takes about 6 minutes and gives ok precision mostly
         :param f:
         :param f2:
         :return:
@@ -292,24 +295,24 @@ class BlackHole:
         df2 = pd.read_csv(f, index_col=0) if os.path.exists('./{}'.format(f2)) else \
             pd.DataFrame(columns=['X', 'Y', 'impact_parameter', 'angle', 'z_factor', 'flux_o'])
 
-        minR_ = minR if minR else self.M * 3.01
-        maxR_ = maxR if maxR else self.M * 60
-        t = tqdm(range(N), desc="Sampling points for direct and ghost image")
+        min_radius_ = min_radius if min_radius else self.M * 3.01
+        max_radius_ = max_radius if max_radius else self.M * 60
+        t = tqdm(range(n_points), desc="Sampling points for direct and ghost image")
         for _ in t:
             t.update(1)
             # r = minR_ + maxR_ * np.sqrt(np.random.random())  # uniformly sampling a circle's surface
-            r = minR_ + maxR_ * np.random.random()  # bias towards center (where the interesting stuff is)
+            r = min_radius_ + max_radius_ * np.random.random()  # bias towards center (where the interesting stuff is)
             theta = np.random.random() * 2 * np.pi
             b_ = calc_impact_parameter(r, incl=self.t, _alpha=theta, bh_mass=self.M, **self.solver_params)
             b_2 = calc_impact_parameter(r, incl=self.t, _alpha=theta, bh_mass=self.M, **self.solver_params, n=1)
             if b_ is not None:
                 x, y = polar_to_cartesian_lists([b_], [theta], rotation=-np.pi / 2)
                 redshift_factor_ = redshift_factor(r, theta, self.t, self.M, b_)
-                F_o = flux_observed(r, self.acc, self.M, redshift_factor_)
+                f_o = flux_observed(r, self.acc, self.M, redshift_factor_)
                 df = pd.concat([df,
                                 pd.DataFrame.from_dict({'X': x, 'Y': y, 'impact_parameter': b_,
                                                         'angle': (theta + 3 * np.pi / 2) % (2 * np.pi),
-                                                        'z_factor': redshift_factor_, 'flux_o': F_o})])
+                                                        'z_factor': redshift_factor_, 'flux_o': f_o})])
             if b_2 is not None:
                 theta = (theta + np.pi) % (2 * np.pi)  # TODO: fix dirty manual flip for ghost image
                 x, y = polar_to_cartesian_lists([b_2], [theta], rotation=-np.pi / 2)
@@ -323,27 +326,30 @@ class BlackHole:
         df.to_csv(f)
         df2.to_csv(f2)
 
-    def plot_points(self, f='Points/points_incl=80.0.csv', f2='Points/points_secondary_incl=80.0.csv', powerscale=.7, levels=100):
+    def plot_points(self, f='Points/points_incl=80.0.csv', f2='Points/points_secondary_incl=80.0.csv', power_scale=.7,
+                    levels=100):
         """
+        # TODO define max radius for accretion disk to help plot the ghost image
         Plot the points written out by samplePoints()
         :param f: filename of points (direct image)
         :param f2: filename of points (secondary image)
-        :param powerscale: powerscale to apply to flux. No powerscale = 1. Anything lower than 1 will make the
+        :param levels: amount of levels in matplotlib contour plot
+        :param power_scale: powers_cale to apply to flux. No power_scale = 1. Anything lower than 1 will make the
         dim points pop out more.
         :return:
         """
 
-        def plotDirectImage(_ax, points, _min_flux, _max_flux, _powerscale):
+        def plot_direct_image(_ax, points, _min_flux, _max_flux, _power_scale):
             # direct image
-            fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _powerscale for fl in points['flux_o']]
+            fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _power_scale for fl in points['flux_o']]
             _ax.tricontourf(points['X'], points['Y'], fluxes, cmap='Greys_r', norm=plt.Normalize(0, 1),
                             levels=levels,
                             nchunk=2)
-            br = blackRing(self)
+            br = self.black_ring()
             _ax.fill_between(br.X, br.Y, color='black')  # to fill Delauney triangulation artefacts with black
             return _ax
 
-        def plotGhostImage(_ax, points, _levels, _min_flux, _max_flux, _powerscale):
+        def plot_ghost_image(_ax, points, _levels, _min_flux, _max_flux, _power_scale):
             # ghost image
             cross_angle = np.pi / 40  # about where the ghost image dips under the accretion disk
             points = points.loc[(points['angle'] < np.pi + cross_angle) |
@@ -352,7 +358,7 @@ class BlackHole:
             N_chunks = _levels // 20
             for level in range(N_chunks):
                 points_chunk = points[level * len(points) // N_chunks: (level + 1) * len(points) // N_chunks]
-                fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _powerscale for fl in
+                fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _power_scale for fl in
                           points_chunk['flux_o']]
                 color = [cm.ScalarMappable(cmap="Greys_r", norm=plt.Normalize(0, 1)).to_rgba(flux)
                          for flux in fluxes]
@@ -361,12 +367,6 @@ class BlackHole:
                             s=.5)
             return _ax
 
-        def blackRing(_bh):
-            ir = Isoradial(radius=6 * self.M, incl=self.t, order=0, _solver_params=_bh.solver_params, bh_mass=_bh.M)
-            ir.radii_b = [.99 * b for b in ir.radii_b]
-            ir.X, ir.Y = polar_to_cartesian_lists(ir.radii_b, ir.angles, rotation=-np.pi / 2)
-            return ir
-
         _fig, _ax = self.__get_figure()
         points1 = pd.read_csv(f)
         # points1 = addBlackRing(self, points1)
@@ -374,8 +374,8 @@ class BlackHole:
         max_flux = max(max(points1['flux_o']), max(points2['flux_o']))
         min_flux = 0
 
-        _ax = plotDirectImage(_ax, points1, min_flux, max_flux, powerscale)
-        _ax = plotGhostImage(_ax, points2, levels, min_flux, max_flux, powerscale)
+        _ax = plot_direct_image(_ax, points1, min_flux, max_flux, power_scale)
+        _ax = plot_ghost_image(_ax, points2, levels, min_flux, max_flux, power_scale)
 
         _ax.set_xlim((-40, 40))
         _ax.set_ylim((-40, 40))
@@ -499,7 +499,7 @@ class Isoradial:
 
     def calc_redshift_factors(self):
         """Calculates the redshift factor (1 + z) over the line of the isoradial"""
-        redshift_factors = [redshift_factor(radius=self.radius, angle=angle, incl=self.t, M=self.M, b_=b_)
+        redshift_factors = [redshift_factor(radius=self.radius, angle=angle, incl=self.t, bh_mass=self.M, b_=b_)
                             for b_, angle in zip(self.radii_b, self.angles)]
         self.redshift_factors = redshift_factors
         return redshift_factors
@@ -717,7 +717,7 @@ class Isoredshift:
         self.ir_radii_w_co = [key for key, val in self.radii_w_coordinates_dict.items() if
                               len(val[0]) > 0]  # list of R that have solution
         self.co = self.angles, self.radii = self.__extract_co_from_solutions_dict(coordinates)
-        self.maxR = max(self.radii) if len(self.radii) else 0
+        self.max_radius = max(self.radii) if len(self.radii) else 0
         self.x, self.y = polar_to_cartesian_lists(self.radii, self.angles, rotation=0)
         self.order_coordinates()
 
@@ -819,6 +819,7 @@ class Isoredshift:
             plt.plot([0, order_around[0]], [0, order_around[1]])
             plt.title(plot_title)
             plt.show()
+            plt.close('all')
 
         self.co = self.angles, self.radii = [e[0] for e in sorted_co], [e[1] for e in sorted_co]
         self.x, self.y = polar_to_cartesian_lists(self.radii, self.angles, rotation=0)
@@ -872,8 +873,6 @@ class Isoredshift:
         Recalculates the first (closest) isoradial that did not find a solution with more angular precision.
         Isoradial is recalculated withing the angular interval of the two last (furthest) solutions.
         This is done to guarantee that the lack of solutions is not due to lack of angular precision.
-
-        :param angular_precision: the angular precision at which to recalculate the isoradial
 
         :return: 0 if success
         """
@@ -932,10 +931,10 @@ class Isoredshift:
         r_w_so, r_wo_s = self.split_co_on_solutions()
         if len(r_wo_s.keys()) > 0:
             for it in range(iterations):
-                self.calc_ir_before_closest_ir_wo_z()  # precision must be high enough
+                self.calc_ir_before_closest_ir_wo_z()
                 self.order_coordinates(plot_inbetween=plot_inbetween, plot_title=f"Improving tip iteration {it}")
 
-    def improve(self, times_inbetween=3, times_tip=10,
+    def improve(self, times_inbetween=3, times_tip=15,
                 plot_inbetween=False):
         """
         Given an isoredshift calculated from just a couple coordinates, improves the solutions by:
@@ -972,14 +971,14 @@ class Isoredshift:
         mx2, mx = sorted(_dist)[-2:]
         if mx > threshold * mx2:
             split_ind = np.where(_dist == mx)[0][0]
-            if not np.diff(np.sign(self.x[split_ind:split_ind+2])) > 0:
+            if not abs(np.diff(np.sign(self.x[split_ind:split_ind+2]))) > 0:
                 # not really a jump, just an artefact of varying point density along the isoredshift line
                 split_ind = None
         else:
             split_ind = None
         return split_ind
 
-    def plot(self, ax, norm, color_map):
+    def plot(self, norm, color_map):
         color = cm.ScalarMappable(norm=norm, cmap=color_map).to_rgba(self.redshift)
         plt.plot(self.y, [-e for e in self.x], color=color)  # TODO: hack to correctly orient plot
         plt.plot(self.y, [-e for e in self.x], color=color)  # TODO: hack to correctly orient plot
@@ -1000,9 +999,9 @@ def polar_to_cartesian_lists(radii, angles, rotation=0):
     return x, y
 
 
-def polar_to_cartesian_single(th, R, rotation=0):
-    x = R * np.cos(th + rotation)
-    y = R * np.sin(th + rotation)
+def polar_to_cartesian_single(th, radius, rotation=0):
+    x = radius * np.cos(th + rotation)
+    y = radius * np.sin(th + rotation)
     return x, y
 
 
@@ -1038,17 +1037,17 @@ def get_angle_around(p1, p2):
 
 if __name__ == '__main__':
     M = 1.
-    bh = BlackHole(inclination=90, mass=M)
+    bh = BlackHole(inclination=80, mass=M)
     # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
 
     # bh.plot_params['plot_core'] = False
     # bh.plot_params['plot_isoredshifts_inbetween'] = True
     bh.angular_properties['angular_precision'] = 50
     # bh.sample_points(N=10000, maxR=60)
-    bh.plot_isoredshifts(r_precision=10)
+    bh.plot_params["plot_isoredshifts_inbetween"] = True
+    bh.plot_isoredshifts(redshifts=[-.2, -.15, -.1, -.05, 0., .05, .1, .15, .2, .25, .5, .75],
+                         r_precision=10)
     # bh.plot_isoredshifts_from_points(ax_lim=(-35, 35))
-    # TODO: check why Isoredshift.calcInbetween doesn't always find a solution
-    # TODO: split on jump
     # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
     # bh.samplePoints(N=5000, minR=6, maxR=40)
-    # bh.plotPoints(powerscale=1)
+    # bh.plotPoints(power_scale=1)
