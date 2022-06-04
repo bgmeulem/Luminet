@@ -35,36 +35,25 @@ bh.plot_isoredshifts_from_points()
 ```
 
 # Latest updates:
-Rewrite of entire branch. Apologies for the lack of incremental updates, it seems my upstream branch has not been set up properly. This is fixed now.
-Everything has been moved to two files: black_hole_math.py (for calculating equations and variables) and a file containing the class 
-BlackHole() for easy access to calculations.
-
-Vastly improved speed and stability. Impact parameters are calculated using the midpoint method: stable and quick.
-Added functionality to calculate redshifts and isoredshift lines
-
-(30/12/2021)
-- Identified errors in the paper. This explains the large redshift values. Fixed these errors and annotated them in the code.
-- Added functionality to plot over the original figure to check for these errors (only the figure of isoradial lines at incl=60°)
-
-(24/2/2022)
+24 February, 2022
 - Fixed redshift
 - Can now sample points in (R, alpha) space. Luminet started from the isofluxlines though, which may be (will probably be) more efficient.
 
-(20/5/2022) 
-- changed from mpmath library to scipy for the calculation of elliptic integrals. Mpmath was only useful for support of complex solutions, which correspond to non-physical solutions. This support is now deprecated for the benefit of speed (about 2 to 6 times as fast now). 
-- main method of calculating isoredshifts is now done by sampling the entire accretion disk space and making a contour plot of the resulting points. Algortihmically calculating the isoredshifts is still possible, but needs revision. When the isoradial corresponding to some (b, α, z) coordinate has a sharp intersection with the isoredshift (z), it needs a lot of angular precision to properly intersect and thus calculate the solution (b, α, z). I should implement something that can adaptive ly check if this intersection is indeed sharp and put angular precision where it belongs. For now, it just does not intersect and does not find solutions for all locations along some isoredshift line. 
+20 May, 2022 
+- changed from mpmath library to scipy for the calculation of elliptic integrals. 
+- main method of calculating isoredshifts is now done by sampling the entire accretion disk space and making a contour plot of the resulting points.  
 - added gif of rotating isoredshift values for varying inclination. 
+
+4 June, 2022
+- implemeted accretion disk size. Now the black hole photograph can be plotted including the ghost image
+- Fixed the Isoredshift algorithm. You can now calculate isoredshift lines with arbitrary precision. This method fails for edge-on or top-down inclinations (0, 90 or 180 degrees) as the isoradials and isoredshift lines don't intersect at these inclinations.
+- Moved most parameters to a separate file: `paremeters.ini`
 # TODO
 
 1. Flux
   - Calculate isofluxlines in some efficiënt manner (can now be reconstructed from sampled points, but it would be neat to sample points based on isofluxlines). Perhaps calulating some points and reconstructing the lines?
 
-2. Redshift
-- revise algortihmically calculating is redshift lines 
-
-3. General
-- revise code structure. Is an isoredshift class necessary? 
-- implement data classes
-- implement black hole accretion disk size property (for easier plotting of ghost images) 
+2. General
+- implement data classes?
 - add isoredshift ghost image plotting 
 - add video of rotating black hole

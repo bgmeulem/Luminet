@@ -1063,15 +1063,6 @@ def get_angle_around(p1, p2):
 if __name__ == '__main__':
     M = 1.
     bh = BlackHole(inclination=85, mass=M)
-    # bh.writeFrames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5, ax_lim=(-35, 35))
-    # bh.plot_params['plot_core'] = False
-    # bh.plot_params['plot_isoredshifts_inbetween'] = True
-    bh.ir_parameters['angular_precision'] = 50
     bh.sample_points(n_points=10000)
     bh.plot_points()
-    # bh.plot_isoredshifts(redshifts=[-.2, -.15, -.1, -.05, 0., .05, .1, .15, .2, .25, .5, .75],
-    # r_precision=10)
-    # bh.plot_isoredshifts_from_points(ax_lim=(-35, 35))
-    # fig, ax = bh.plotIsoradials([6, 10, 20, 30], [6, 10, 30, 1000], ax_lim=(-35, 35))
-    # bh.samplePoints(N=5000, minR=6, maxR=40)
-    # bh.plotPoints(power_scale=1)
+
