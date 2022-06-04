@@ -1,6 +1,6 @@
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
-<img src="SampledPoints_incl=10.png" alt="Picture" />
+<img src="SampledPoints_incl=85.png" alt="Picture" />
 <img src="output.gif" alt="gif" />
 
 
@@ -10,23 +10,28 @@ This repo provides material for recreating the famous paper by Jean-Pierre Lumin
 from black_hole import *
 
 M = 1.
-bh = BlackHole(inclination=80, mass=M)
 
+############ The Isoradial class ############
 # Calculate single isoradial
-ir = Isoradial(R=30 * M, incl=80 * np.pi / 180, mass=M, order=0)
+ir = Isoradial(radius=30*M, incl=80 * np.pi / 180, bh_mass=M, order=0)
 ir.calculate()
 ir.plot_redshift()  # plot its redshifts along the line
 
-# plot isoradial lines
-bh.plot_isoradials([6, 10, 20, 30], [6, 10, 20, 30])
+############ The BlackHole class ############
+bh = BlackHole(inclination=85, mass=M)
 
-# write frames for a gif of rotating isoradial lines
-bh.write_frames(direct_r=[6, 10, 20, 30], ghost_r=[6, 10, 20, 30], start=0, end=180, step_size=5,
-                ax_lim=(-35, 35))
+## Plot isoradial lines. Plotting 1 Isoradial is equivalent to the above method
+bh.plot_isoradials([10, 20, 30], [10, 20, 30])
 
-# plot lines of equal redshift values
-bh.plot_isoredshifts(minR=5, maxR=80, r_precision=20, midpoint_steps=5,
-                     redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.])
+## Plot Isoredshift lines
+bh.plot_isoredshifts(redshifts=[-.5, -.35, -.15, 0., .15, .25, .5, .75, 1.])
+# This method fails for extreme inclinations i.e. edge-on and top-down
+
+## Sample points on the accretion disk and plot them
+bh.sample_points(n_points=20000)
+bh.plot_points()
+# Plot isoredshift lines from the sampled points (useful for edge-on or top-down view, where the other method fails)
+bh.plot_isoredshifts_from_points()
 ```
 
 # Latest updates:
