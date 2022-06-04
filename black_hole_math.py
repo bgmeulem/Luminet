@@ -1,8 +1,8 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.special import ellipj, ellipk, ellipkinc
 from typing import Dict
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.special import ellipj, ellipk, ellipkinc
 
 # import mpmath
 
@@ -196,7 +196,17 @@ def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, pl
     complex solutions within radii smaller than the photon sphere!), but are for now outside the scope of this project.
     Must be large enough to include solution, hence the dependency on the radius (the bigger the radius of the
     accretion disk where you want to find a solution, the bigger the periastron solution is, generally)
+
+    Args:
+        _r (float): radius on the accretion disk (BH frame)
+        incl (float): inclination of the black hole
+        _alpha: angle along the accretion disk (BH frame and observer frame)
+        bh_mass (float): mass of the black hole
+        midpoint_iterations (int): amount of midpoint iterations to do when searching a periastron value solving eq13
+        plot_inbetween (bool): plot
     """
+
+    # angle = (_alpha + n*np.pi) % (2 * np.pi)  # Assert the angle lies in [0, 2 pi]
 
     def get_plot(X, Y, solution, radius=_r):
         fig = plt.figure()
@@ -220,11 +230,11 @@ def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, pl
             improve_solutions_midpoint(func=eq13, args=args_eq13,
                                        x=periastron_range, y=y_, index_of_sign_change=ind[0],
                                        iterations=midpoint_iterations)  # get better P values
-
         if plot_inbetween:
             get_plot(periastron_range, y_, periastron_solution).show()
-        return float(calc_b_from_periastron(periastron_solution, bh_mass).real)
-    elif use_ellipse:
+        return calc_b_from_periastron(periastron_solution, bh_mass)
+
+    elif use_ellipse:  # set False if you want to inspect the regions where the elliptic integral doesn't find solutions
         # No periastron solution was found: assume this is because it's the front side of the disk
         # This happens for low values of alpha
         # But it's the front side of disk: calculate impact parameter with the ellipse formula
