@@ -57,3 +57,4 @@ bh.plot_isoredshifts_from_points()
 - implement data classes?
 - add isoredshift ghost image plotting 
 - add video of rotating black hole
+- Kerr metric? 
