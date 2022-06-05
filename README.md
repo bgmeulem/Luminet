@@ -54,6 +54,7 @@ bh.plot_isoredshifts_from_points()
   - Calculate isofluxlines in some efficiënt manner (can now be reconstructed from sampled points, but it would be neat to sample points based on isofluxlines). Perhaps calulating some points and reconstructing the lines?
 
 2. General
+- clean up class structure. The BlackHole class does not need to contain the solver/plotting parameters of isorefshifts or isoradials. These could (and should ?) be split up. 
 - implement data classes?
 - add isoredshift ghost image plotting 
 - add video of rotating black hole
