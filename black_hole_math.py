@@ -184,27 +184,27 @@ def improve_solutions_midpoint(func, args, x, y, index_of_sign_change, iteration
     return updated_periastron
 
 
-def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, plot_inbetween=False,
-                          n=0, min_periastron=1, initial_guesses=20, use_ellipse=True) -> float:
+def calc_periastron(_r, incl, _alpha, bh_mass, midpoint_iterations=100, plot_inbetween=False,
+                    n=0, min_periastron=1., initial_guesses=20) -> float:
     """
-    Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value
-    This periastron can be converted to an impact parameter b, yielding the observer frame coordinates (b, alpha).
-    Does this by generating range of periastron values, evaluating eq13 on this range and using a midpoint method
-    to iteratively improve which periastron value solves equation 13.
-    The considered initial periastron range must not be lower than min_periastron (i.e. the photon sphere),
-    otherwise non-physical solutions will be found. These are interesting in their own right (the equation yields
-    complex solutions within radii smaller than the photon sphere!), but are for now outside the scope of this project.
-    Must be large enough to include solution, hence the dependency on the radius (the bigger the radius of the
-    accretion disk where you want to find a solution, the bigger the periastron solution is, generally)
+        Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value
+        This periastron can be converted to an impact parameter b, yielding the observer frame coordinates (b, alpha).
+        Does this by generating range of periastron values, evaluating eq13 on this range and using a midpoint method
+        to iteratively improve which periastron value solves equation 13.
+        The considered initial periastron range must not be lower than min_periastron (i.e. the photon sphere),
+        otherwise non-physical solutions will be found. These are interesting in their own right (the equation yields
+        complex solutions within radii smaller than the photon sphere!), but are for now outside the scope of this project.
+        Must be large enough to include solution, hence the dependency on the radius (the bigger the radius of the
+        accretion disk where you want to find a solution, the bigger the periastron solution is, generally)
 
-    Args:
-        _r (float): radius on the accretion disk (BH frame)
-        incl (float): inclination of the black hole
-        _alpha: angle along the accretion disk (BH frame and observer frame)
-        bh_mass (float): mass of the black hole
-        midpoint_iterations (int): amount of midpoint iterations to do when searching a periastron value solving eq13
-        plot_inbetween (bool): plot
-    """
+        Args:
+            _r (float): radius on the accretion disk (BH frame)
+            incl (float): inclination of the black hole
+            _alpha: angle along the accretion disk (BH frame and observer frame)
+            bh_mass (float): mass of the black hole
+            midpoint_iterations (int): amount of midpoint iterations to do when searching a periastron value solving eq13
+            plot_inbetween (bool): plot
+        """
 
     # angle = (_alpha + n*np.pi) % (2 * np.pi)  # Assert the angle lies in [0, 2 pi]
 
@@ -224,22 +224,54 @@ def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, pl
     ind = np.where(np.diff(np.sign(y_)))[0]  # only one solution should exist
     periastron_solution = periastron_range[ind[0]] if len(ind) else None  # initial guesses for P
 
-    if periastron_solution is not None:  # elliptic integral found a periastron solving equation 13
+    if (periastron_solution is not None) and (not np.isnan(
+            periastron_solution)):  # elliptic integral found a periastron solving equation 13
         args_eq13 = {"ir_radius": _r, "ir_angle": _alpha, "bh_mass": bh_mass, "incl": incl, "n": n}
         periastron_solution = \
             improve_solutions_midpoint(func=eq13, args=args_eq13,
                                        x=periastron_range, y=y_, index_of_sign_change=ind[0],
                                        iterations=midpoint_iterations)  # get better P values
-        if plot_inbetween:
-            get_plot(periastron_range, y_, periastron_solution).show()
-        return calc_b_from_periastron(periastron_solution, bh_mass)
+    if plot_inbetween:
+        get_plot(periastron_range, y_, periastron_solution).show()
+    return periastron_solution
 
-    elif use_ellipse:  # set False if you want to inspect the regions where the elliptic integral doesn't find solutions
-        # No periastron solution was found: assume this is because it's the front side of the disk
-        # This happens for low values of alpha
-        # But it's the front side of disk: calculate impact parameter with the ellipse formula
-        # instead of elliptic integrals (the difference between the two goes to 0 as alpha approaches 0 or 2pi)
+
+def calc_impact_parameter(_r, incl, _alpha, bh_mass, midpoint_iterations=100, plot_inbetween=False,
+                          n=0, min_periastron=1., initial_guesses=20, use_ellipse=True) -> float:
+    """
+    Given a value for r (BH frame) and alpha (BH/observer frame), calculate the corresponding periastron value
+    This periastron is then converted to an impact parameter b, yielding the observer frame coordinates (b, alpha).
+    Does this by generating range of periastron values, evaluating eq13 on this range and using a midpoint method
+    to iteratively improve which periastron value solves equation 13.
+    The considered initial periastron range must not be lower than min_periastron (i.e. the photon sphere),
+    otherwise non-physical solutions will be found. These are interesting in their own right (the equation yields
+    complex solutions within radii smaller than the photon sphere!), but are for now outside the scope of this project.
+    Must be large enough to include solution, hence the dependency on the radius (the bigger the radius of the
+    accretion disk where you want to find a solution, the bigger the periastron solution is, generally)
+
+    Args:
+        _r (float): radius on the accretion disk (BH frame)
+        incl (float): inclination of the black hole
+        _alpha: angle along the accretion disk (BH frame and observer frame)
+        bh_mass (float): mass of the black hole
+        midpoint_iterations (int): amount of midpoint iterations to do when searching a periastron value solving eq13
+        plot_inbetween (bool): plot
+    """
+
+    # angle = (_alpha + n*np.pi) % (2 * np.pi)  # Assert the angle lies in [0, 2 pi]
+
+    periastron_solution = calc_periastron(_r, incl, _alpha, bh_mass, midpoint_iterations, plot_inbetween, n,
+                                          min_periastron, initial_guesses)
+    if periastron_solution is None or periastron_solution <= 2.*bh_mass:
+        # No periastron was found, or a periastron was found, but it's non-physical
+        # Assume this is because the image of the photon trajectory might have a periastron,
+        # but it does not actually move towards this, but away from the black hole
+        # these are generally photons at the front of the accretion disk: use the ellipse function
+        # (the difference between the two goes to 0 as alpha approaches 0 or 2pi)
         return ellipse(_r, _alpha, incl)
+    elif periastron_solution > 2.*bh_mass:
+        b = calc_b_from_periastron(periastron_solution, bh_mass)
+        return b
     else:
         # Should never happen
         # why was no P found?
