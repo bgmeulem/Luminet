@@ -1,4 +1,4 @@
-![workflow](.github/workflows/python-app.yml)
+[![workflow](.github/workflows/python-app.yml)](https://img.shields.io/appveyor/bgmeulem/Luminet/build.svg)
 # Luminet
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
 <img src="SampledPoints_incl=85.png" alt="Picture" />
