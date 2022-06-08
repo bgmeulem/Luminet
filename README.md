@@ -1,4 +1,4 @@
-# Luminet ![build-badge](https://img.shields.io/appveyor/build/bgmeulem/Luminet?style=flat-square) ![release](https://img.shields.io/github/v/tag/bgmeulem/Luminet?include_prereleases&label=release&style=flat-square) ![stars-badge](https://img.shields.io/github/stars/bgmeulem/Luminet?style=flat-square)
+# Luminet ![ci-badge]((https://img.shields.io/appveyor/build/bgmeulem/Luminet?label=ci)) ![release](https://img.shields.io/github/v/tag/bgmeulem/Luminet?include_prereleases&label=release&style=flat-square) ![stars-badge](https://img.shields.io/github/stars/bgmeulem/Luminet?style=flat-square)
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
 <img src="SampledPoints_incl=85.png" alt="Picture" />
 <img src="output.gif" alt="gif" />
