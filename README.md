@@ -2,7 +2,6 @@
 This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
 <img src="SampledPoints_incl=85.png" alt="Picture" />
 <img src="output.gif" alt="gif" />
-https://img.shields.io/appveyor/build/bgmeulem/Luminet?label=ci&style=flat-square
 
 # Usage
 
