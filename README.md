@@ -1,5 +1,11 @@
-# Luminet ![ci-badge](https://img.shields.io/appveyor/build/bgmeulem/Luminet?label=ci&style=flat-square) ![coverage](https://img.shields.io/codecov/c/github/bgmeulem/Luminet?style=flat-square) ![release](https://img.shields.io/github/v/tag/bgmeulem/Luminet?include_prereleases&label=release&style=flat-square) ![stars-badge](https://img.shields.io/github/stars/bgmeulem/Luminet?style=flat-square)
-This repo provides material for recreating the famous paper by Jean-Pierre Luminet, simulating the first image of a black hole. This is done in Python 3.8
+<div align="center">
+  
+# Luminet
+![ci-badge](https://img.shields.io/appveyor/build/bgmeulem/Luminet?label=ci&style=flat-square) ![coverage](https://img.shields.io/codecov/c/github/bgmeulem/Luminet?style=flat-square) ![release](https://img.shields.io/github/v/tag/bgmeulem/Luminet?include_prereleases&label=release&style=flat-square) ![stars-badge](https://img.shields.io/github/stars/bgmeulem/Luminet?style=flat-square)
+  
+This repo provides material for recreating the famous paper by Jean-Pierre Luminet (1979), simulating the first image of a black hole. This is done in Python 3.8
+
+</div>
 <img src="SampledPoints_incl=85.png" alt="Picture" />
 <img src="output.gif" alt="gif" />
 
@@ -49,12 +55,20 @@ bh.plot_isoredshifts_from_points()
 - Moved most parameters to a separate file: `paremeters.ini`
 # TODO
 
-1. Flux
-  - Calculate isofluxlines in some efficiënt manner (can now be reconstructed from sampled points, but it would be neat to sample points based on isofluxlines). Perhaps calulating some points and reconstructing the lines?
+## Bugs
+- Fix plotting from points when inclination is over 90 degrees
 
-2. General
+## Improvements
+
+- Calculate isofluxlines in some efficiënt manner (can now be reconstructed from sampled points, but it would be neat to sample points based on isofluxlines). Perhaps calulating some points and reconstructing the lines?
 - clean up class structure. The BlackHole class does not need to contain the solver/plotting parameters of isorefshifts or isoradials. These could (and should ?) be split up. 
 - implement data classes?
 - add isoredshift ghost image plotting 
 - add video of rotating black hole
 - Kerr metric? 
+
+
+# Bibliography
+[1] Luminet, J.-P., [“Image of a spherical black hole with thin accretion disk.”](https://ui.adsabs.harvard.edu/abs/1979A%26A....75..228L/abstract), <i>Astronomy and Astrophysics</i>, vol. 75, pp. 228–235, 1979.
+
+[2] J.-P. Luminet, [“An Illustrated History of Black Hole Imaging : Personal Recollections (1972-2002).”](https://arxiv.org/abs/1902.11196) arXiv, 2019. doi: 10.48550/ARXIV.1902.11196. 
