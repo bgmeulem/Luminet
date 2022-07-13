@@ -1,5 +1,6 @@
 from black_hole import *
 import numpy as np
+import pytest
 
 
 @pytest.mark.parametrize("mass", [1., 2.])

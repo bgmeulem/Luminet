@@ -1,5 +1,6 @@
 from black_hole import BlackHole, Isoradial
 import numpy as np
+from tqdm import tqdm
 
 
 def test_bh_isoradials() -> None:
