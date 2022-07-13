@@ -2,12 +2,12 @@ import pytest
 import numpy as np
 from black_hole_math import *
 
-N_inclines = 5
+N_inclines = 3
 N_angles = 5
-N_radii = 5
+N_radii = 4
 
 
-@pytest.mark.parametrize('mass', [1., 2., 3., 4.])
+@pytest.mark.parametrize('mass', [1., 2.5, 4.])
 @pytest.mark.parametrize('inclination', [np.random.randint(0, np.pi) for _ in range(N_inclines)])
 @pytest.mark.parametrize('angle', [np.random.randint(0., 2 * np.pi) for _ in range(N_angles)])
 @pytest.mark.parametrize('radius', [np.random.randint(6.01, 60.) for _ in range(N_radii)])

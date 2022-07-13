@@ -2,6 +2,7 @@ from typing import Dict
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
+from numba import jit
 from scipy.special import ellipj, ellipk, ellipkinc
 
 # import mpmath

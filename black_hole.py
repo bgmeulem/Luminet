@@ -70,14 +70,13 @@ class BlackHole:
 
     def plot_photon_sphere(self, _ax, c='red'):
         # plot black hole itself
-        x, y = self.apparent_inner_edge(cartesian=True).cartesian_co
+        x, y = self.apparent_inner_edge(cartesian=True)
         _ax.plot(x, y, color=c, zorder=0)
         # plot critical value of b
         x_, y_ = polar_to_cartesian_lists([5.2] * 2 * self.angular_properties["angular_precision"],
                                           np.linspace(-np.pi, np.pi, 2 * self.angular_properties["angular_precision"]))
         _ax.fill(x_, y_, facecolor="none", edgecolor='white', zorder=0, hatch='\\\\\\\\', alpha=.5, linewidth=.5)
         # plot black hole itself
-
         x_, y_ = polar_to_cartesian_lists([2 * self.M] * 2 * self.angular_properties["angular_precision"],
                                           np.linspace(-np.pi, np.pi, 2 * self.angular_properties["angular_precision"]))
         _ax.fill(x_, y_, facecolor='none', zorder=0, edgecolor='white', hatch='////')
@@ -102,17 +101,22 @@ class BlackHole:
     def get_apparent_inner_edge_radius(self, angle, rotation=0):
         return self.disk_apparent_inner_edge.get_b_from_angle(angle + rotation)
 
-    def plot_apparent_inner_edge(self, _ax, c='red'):
-        # plot black hole
+    def plot_apparent_inner_edge(self, _ax, linestyle='--'):
+        # plot black hole (photon sphere)
+        # TODO why don't I use the Isoradial class for this?
         x = []
         y = []
-        for a in np.linspace(0, 2 * np.pi, 2 * self.angular_properties["angular_precision"]):
+        impact_parameters = []
+        angles = np.linspace(0, 2 * np.pi, 2 * self.angular_properties["angular_precision"])
+        for a in angles:
             b = self.get_apparent_inner_edge_radius(a)
+            impact_parameters.append(b)
             rot = -np.pi / 2 if self.t < np.pi / 2 else np.pi / 2
             x_, y_ = polar_to_cartesian_lists([b], [a], rotation=rot)
             x.append(x_)
             y.append(y_)
-        _ax.plot(x, y, color=c, zorder=0, linestyle='--')
+
+        _ax.plot(x, y, zorder=0, linestyle=linestyle, linewidth=2. * self.plot_params["linewidth"])
         return _ax
 
     def get_figure(self):
@@ -265,30 +269,28 @@ class BlackHole:
             fig_.savefig('movie/' + name, dpi=300, facecolor=self.plot_params['face_color'])
             plt.close()  # to not destroy your RAM
 
-    def plot_isoredshifts(self, redshifts=None):
+    def plot_isoredshifts(self, redshifts=None, plot_core=False):
         if redshifts is None:
             redshifts = [-.2, -.15, 0., .15, .25, .5, .75, 1.]
         _fig, _ax = self.get_figure()  # make new figure
-        color_map = plt.get_cmap('RdBu_r')
-        norm = mpl.colors.Normalize(-1, 1)
 
         bh.calc_isoredshifts(redshifts=redshifts).values()
 
         for redshift, irz in self.isoredshifts.items():
             r_w_s, r_wo_s = irz.split_co_on_solutions()
             if len(r_w_s.keys()):
-                color = cm.ScalarMappable(norm=norm, cmap=color_map).to_rgba(irz.redshift)
                 split_index = irz.split_co_on_jump()
                 if split_index is not None:
-                    plt.plot(irz.y[:split_index], [-e for e in irz.x][:split_index], color=color)
-                    plt.plot(irz.y[split_index + 1:], [-e for e in irz.x][split_index + 1:], color=color)
+                    plt.plot(irz.y[:split_index], [-e for e in irz.x][:split_index],
+                             linewidth=self.plot_params["linewidth"])
+                    plt.plot(irz.y[split_index + 1:], [-e for e in irz.x][split_index + 1:],
+                             linewidth=self.plot_params["linewidth"])
                 else:
-                    plt.plot(irz.y, [-e for e in irz.x], color=color)  # todo: why do i need to flip x
+                    plt.plot(irz.y, [-e for e in irz.x],
+                             linewidth=self.plot_params["linewidth"])  # todo: why do i need to flip x
 
-        # Shrink current axis by 20%
-        # mx = 1.1 * max([max(isoredshift.redshift) for isoredshift in isoredshifts])
-        # ax.set_xlim((-mx, mx))
-        # ax.set_ylim((-mx, mx))
+        if plot_core:
+            _ax = self.plot_apparent_inner_edge(_ax, linestyle='-')
         plt.suptitle("Isoredshift lines for M={}".format(self.M))
         plt.show()
         return _fig, _ax
@@ -371,9 +373,9 @@ class BlackHole:
 
         def plot_ghost_image(_ax, points, _levels, _min_flux, _max_flux, _power_scale):
             # ghost image
-            points_inner = points.iloc[[b_ < self.get_apparent_inner_edge_radius(a_+np.pi) for b_, a_ in
+            points_inner = points.iloc[[b_ < self.get_apparent_inner_edge_radius(a_ + np.pi) for b_, a_ in
                                         zip(points["impact_parameter"], points["angle"])]]
-            points_outer = points.iloc[[b_ > self.get_apparent_outer_edge_radius(a_+np.pi) for b_, a_ in
+            points_outer = points.iloc[[b_ > self.get_apparent_outer_edge_radius(a_ + np.pi) for b_, a_ in
                                         zip(points["impact_parameter"], points["angle"])]]
             # _ax.plot(self.disk_apparent_inner_edge.X, self.disk_apparent_inner_edge.Y)
             for i, points_ in enumerate([points_inner, points_outer]):
@@ -381,7 +383,7 @@ class BlackHole:
                 fluxes = [(abs(fl + _min_flux) / (_max_flux + _min_flux)) ** _power_scale for fl in
                           points_['flux_o']]
                 _ax.tricontourf(points_['X'], [-e for e in points_['Y']], fluxes, cmap='Greys_r',
-                                norm=plt.Normalize(0, 1), levels=_levels, nchunk=2, zorder=1-i
+                                norm=plt.Normalize(0, 1), levels=_levels, nchunk=2, zorder=1 - i
                                 )
             x, y = self.apparent_inner_edge(cartesian=True)
             _ax.fill_between(x, y, color='black', zorder=1)  # to fill Delauney triangulation artefacts with black
@@ -509,7 +511,7 @@ class Isoradial:
             angles = [(a_ + np.pi) % (2 * np.pi) for a_ in angles]
         if self.angular_properties['mirror']:  # by default True. Halves computation time for calculating full isoradial
             # add second half of image (left half if 0° is set at South)
-            angles += [(2 * np.pi - a_) % (2*np.pi) for a_ in angles[::-1]]
+            angles += [(2 * np.pi - a_) % (2 * np.pi) for a_ in angles[::-1]]
             impact_parameters += impact_parameters[::-1]
         self.angles = angles
         self.radii_b = impact_parameters
@@ -539,7 +541,7 @@ class Isoradial:
         # TODO: this method only works if angles augment from index 0 to end
         # if image is flipped, then the mod operator makes it so they jump back to 0 about halfway
         # yielding a fake intersection
-        d = [abs(a_ % (2*np.pi) - angle % (2 * np.pi)) for a_ in self.angles]
+        d = [abs(a_ % (2 * np.pi) - angle % (2 * np.pi)) for a_ in self.angles]
         mn = min(d)
         res = [i for i, val in enumerate(d) if val == mn]
         return self.radii_b[res[0]] if len(res) else None
@@ -1086,9 +1088,14 @@ def get_angle_around(p1, p2):
 
 if __name__ == '__main__':
     M = 1.
-    bh = BlackHole(inclination=85, mass=M)
+    incl = 76
+    bh = BlackHole(inclination=incl, mass=M)
+    bh.disk_outer_edge = 100 * M
+    bh.iz_solver_params['radial_precision'] = 30
     bh.angular_properties["angular_precision"] = 200
     # bh.sample_points(n_points=10000)
-    bh.calc_isoradials([10, 20], [])
-    bh.plot_isoradials([10, 20], [10, 20], show=True)
-
+    # bh.calc_isoradials([10, 20], [])
+    # bh.plot_isoradials([10, 20], [10, 20], show=True)
+    fig, ax = bh.plot_isoredshifts(redshifts=[-.2, -.15, -.1, -.05, 0., .05, .1, .15, .25, .5, .75],
+                                   plot_core=True)
+    fig.savefig(f"isoredshifts_{incl}_2.svg", facecolor="#F0EAD6")
