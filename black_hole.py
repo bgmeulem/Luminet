@@ -1,12 +1,10 @@
 import os.path
 import pandas as pd
 import matplotlib.cm as cm
-import matplotlib as mpl
 import matplotlib.collections as mcoll
 import matplotlib.image as img
 from collections import OrderedDict
 from black_hole_math import *
-import pytest
 import configparser
 
 plt.style.use('fivethirtyeight')
